@@ -1,0 +1,110 @@
+# SoloBoard AI API Guide
+
+この API は、ローカル環境で動作する単一ユーザー向けの SoloBoard API です。  
+ベース URL は通常 `http://127.0.0.1:3000` です。
+
+## Recommended Workflow
+
+1. まずボード一覧を取得する。  
+   `GET /api/boards`
+2. 操作対象ボードの詳細を取る。  
+   `GET /api/boards/:boardId`
+3. チケット操作前に、必要ならチケット一覧または単票を取得する。  
+   `GET /api/boards/:boardId/tickets`  
+   `GET /api/tickets/:ticketId`
+4. 更新は最小差分で `PATCH /api/tickets/:ticketId` を使う。  
+   並び替えだけは専用の reorder API を使う。
+5. Kanban 画面の自動更新が必要なら `GET /api/boards/:boardId/events` を購読する。
+
+## Important Semantics
+
+### 1. `laneId` と `isCompleted` は独立
+
+- レーン名が `done` でも、完了状態は `isCompleted` で別管理です。
+- `done` レーンに移すだけでは完了になりません。
+- 完了にしたいなら、必要に応じて `laneId` と `isCompleted: true` を両方更新してください。
+
+### 2. blocker は「このチケットが依存している相手」
+
+- `ticket.blockerIds = [6]` は「このチケットは `#6` に blocked される」を意味します。
+- 自分自身は blocker にできません。
+- 相互 blocker は禁止です。
+  - `#1` が `#2` に blocked されているなら、`#2` を `#1` に blocked させることはできません。
+
+### 3. 親子関係は 1 階層だけ
+
+- 親は複数の子を持てます。
+- 孫は不可です。
+- 子チケットは親になれません。
+- 子を持つチケットは、別の親の子にはできません。
+
+### 4. ラベルは board 単位
+
+- ラベルはボードごとに独立しています。
+- チケット更新時は `labelIds` に、そのボード内のラベル ID を指定してください。
+
+### 5. コメントは追記のみ
+
+- 現状 API はコメントの追加のみ対応しています。
+- 編集・削除 API はありません。
+
+## Common Patterns
+
+### ボード内のチケットを検索したい
+
+`GET /api/boards/:boardId/tickets` に query を付けます。
+
+- `lane_id`
+- `label`
+- `completed`
+- `q`
+
+### チケットをレーン移動したい
+
+単一チケット:
+
+- `PATCH /api/tickets/:ticketId`
+- body に `laneId` を入れる
+
+複数チケットや順序込みの移動:
+
+- `POST /api/boards/:boardId/tickets/reorder`
+
+### チケットを完了にしたい
+
+- `PATCH /api/tickets/:ticketId`
+- body に `isCompleted: true`
+
+必要なら `laneId` も同時に更新します。
+
+### 外部 API 更新を UI に反映したい
+
+- `GET /api/boards/:boardId/events` を `SSE` で購読する
+- 更新時には短い `data: {...}` イベントが流れる
+- UI 側はイベント受信後に `GET /api/boards/:boardId` と必要なら `GET /api/boards/:boardId/tickets` を再取得する
+
+## Error Handling
+
+エラー時は基本的に次の形式です。
+
+```json
+{ "error": "message" }
+```
+
+典型例:
+
+- `400`: 入力不正
+- `404`: 対象が存在しない
+- `409`: 状態競合
+
+## Minimal Tool Contract For AI
+
+```text
+- Resolve board IDs and lane IDs before updating tickets.
+- Treat laneId and isCompleted as separate fields.
+- blockerIds means "this ticket is blocked by these tickets".
+- Never create reciprocal blockers.
+- Parent-child depth is one level only.
+- Use PATCH /api/tickets/:ticketId for normal ticket edits.
+- Use reorder endpoints only for explicit sorting or drag-and-drop persistence.
+```

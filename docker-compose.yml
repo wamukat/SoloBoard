@@ -1,0 +1,15 @@
+services:
+  soloboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soloboard
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${KANBAN_PORT:-3000}
+      SOLOBOARD_DB_FILE: /app/data/soloboard.sqlite
+    ports:
+      - "${KANBAN_PORT:-3000}:${KANBAN_PORT:-3000}"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

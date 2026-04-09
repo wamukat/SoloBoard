@@ -1,0 +1,741 @@
+openapi: 3.1.0
+info:
+  title: SoloBoard API
+  version: 0.1.0
+  summary: Ultra-light local personal kanban API for human and AI collaboration
+servers:
+  - url: http://127.0.0.1:3000
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+
+  /api/boards:
+    get:
+      summary: List boards
+      operationId: listBoards
+      responses:
+        "200":
+          description: Board list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  boards:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Board"
+                required: [boards]
+    post:
+      summary: Create board
+      operationId: createBoard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                laneNames:
+                  type: array
+                  items:
+                    type: string
+              required: [name]
+      responses:
+        "201":
+          description: Created board detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BoardDetail"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /api/boards/import:
+    post:
+      summary: Import a board
+      operationId: importBoard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BoardExport"
+      responses:
+        "201":
+          description: Imported board detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BoardDetail"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /api/boards/{boardId}:
+    get:
+      summary: Get board detail
+      operationId: getBoard
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      responses:
+        "200":
+          description: Board detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BoardDetail"
+        "404":
+          $ref: "#/components/responses/Error"
+    patch:
+      summary: Rename board
+      operationId: updateBoard
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        "200":
+          description: Updated board
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Board"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete board and related data
+      operationId: deleteBoard
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/boards/{boardId}/events:
+    get:
+      summary: Subscribe to board updates via SSE
+      operationId: subscribeBoardEvents
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  data: {"boardId":3,"event":"board_updated","sentAt":"2026-04-10T00:00:00.000Z"}
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/boards/{boardId}/lanes:
+    get:
+      summary: List lanes
+      operationId: listLanes
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      responses:
+        "200":
+          description: Lane list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lanes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Lane"
+                required: [lanes]
+        "404":
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Create lane
+      operationId: createLane
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        "201":
+          description: Created lane
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lane"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/boards/{boardId}/lanes/reorder:
+    post:
+      summary: Reorder lanes
+      operationId: reorderLanes
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                laneIds:
+                  type: array
+                  items:
+                    type: integer
+              required: [laneIds]
+      responses:
+        "200":
+          description: Reordered lanes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lanes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Lane"
+                required: [lanes]
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /api/lanes/{laneId}:
+    patch:
+      summary: Rename lane
+      operationId: updateLane
+      parameters:
+        - $ref: "#/components/parameters/LaneId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        "200":
+          description: Updated lane
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lane"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete empty lane
+      operationId: deleteLane
+      parameters:
+        - $ref: "#/components/parameters/LaneId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /api/boards/{boardId}/labels:
+    get:
+      summary: List labels
+      operationId: listLabels
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      responses:
+        "200":
+          description: Label list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  labels:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Label"
+                required: [labels]
+        "404":
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Create label
+      operationId: createLabel
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                color:
+                  type: string
+              required: [name]
+      responses:
+        "201":
+          description: Created label
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Label"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /api/labels/{labelId}:
+    patch:
+      summary: Update label
+      operationId: updateLabel
+      parameters:
+        - $ref: "#/components/parameters/LabelId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                color:
+                  type: string
+      responses:
+        "200":
+          description: Updated label
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Label"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete label
+      operationId: deleteLabel
+      parameters:
+        - $ref: "#/components/parameters/LabelId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/boards/{boardId}/tickets:
+    get:
+      summary: List tickets
+      operationId: listTickets
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+        - name: lane_id
+          in: query
+          schema:
+            type: integer
+        - name: label
+          in: query
+          schema:
+            type: string
+        - name: completed
+          in: query
+          schema:
+            type: boolean
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ticket list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tickets:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Ticket"
+                required: [tickets]
+        "404":
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Create ticket
+      operationId: createTicket
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/TicketUpsert"
+                - type: object
+                  required: [laneId, title]
+      responses:
+        "201":
+          description: Created ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/boards/{boardId}/tickets/reorder:
+    post:
+      summary: Reorder tickets and move between lanes
+      operationId: reorderTickets
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ticketId:
+                        type: integer
+                      laneId:
+                        type: integer
+                      position:
+                        type: integer
+                    required: [ticketId, laneId, position]
+              required: [items]
+      responses:
+        "200":
+          description: Reordered tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tickets:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Ticket"
+                required: [tickets]
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /api/boards/{boardId}/export:
+    get:
+      summary: Export board
+      operationId: exportBoard
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      responses:
+        "200":
+          description: Export payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BoardExport"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/tickets/{ticketId}:
+    get:
+      summary: Get ticket detail
+      operationId: getTicket
+      parameters:
+        - $ref: "#/components/parameters/TicketId"
+      responses:
+        "200":
+          description: Ticket detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+        "404":
+          $ref: "#/components/responses/Error"
+    patch:
+      summary: Update ticket
+      operationId: updateTicket
+      parameters:
+        - $ref: "#/components/parameters/TicketId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TicketUpsert"
+      responses:
+        "200":
+          description: Updated ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete ticket
+      operationId: deleteTicket
+      parameters:
+        - $ref: "#/components/parameters/TicketId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/tickets/{ticketId}/comments:
+    post:
+      summary: Add comment
+      operationId: addComment
+      parameters:
+        - $ref: "#/components/parameters/TicketId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bodyMarkdown:
+                  type: string
+              required: [bodyMarkdown]
+      responses:
+        "201":
+          description: Created comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+components:
+  parameters:
+    BoardId:
+      name: boardId
+      in: path
+      required: true
+      schema:
+        type: integer
+    LaneId:
+      name: laneId
+      in: path
+      required: true
+      schema:
+        type: integer
+    LabelId:
+      name: labelId
+      in: path
+      required: true
+      schema:
+        type: integer
+    TicketId:
+      name: ticketId
+      in: path
+      required: true
+      schema:
+        type: integer
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+            required: [error]
+  schemas:
+    Board:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, name, createdAt, updatedAt]
+    Lane:
+      type: object
+      properties:
+        id: { type: integer }
+        boardId: { type: integer }
+        name: { type: string }
+        position: { type: integer }
+      required: [id, boardId, name, position]
+    Label:
+      type: object
+      properties:
+        id: { type: integer }
+        boardId: { type: integer }
+        name: { type: string }
+        color: { type: string }
+      required: [id, boardId, name, color]
+    Comment:
+      type: object
+      properties:
+        id: { type: integer }
+        ticketId: { type: integer }
+        bodyMarkdown: { type: string }
+        bodyHtml: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [id, ticketId, bodyMarkdown, bodyHtml, createdAt]
+    TicketRelation:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        isCompleted: { type: boolean }
+        priority: { type: integer }
+      required: [id, title, isCompleted, priority]
+    Ticket:
+      type: object
+      properties:
+        id: { type: integer }
+        boardId: { type: integer }
+        laneId: { type: integer }
+        parentTicketId:
+          type: [integer, "null"]
+        title: { type: string }
+        bodyMarkdown: { type: string }
+        bodyHtml: { type: string }
+        isCompleted: { type: boolean }
+        priority: { type: integer }
+        position: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/Label"
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Comment"
+        blockerIds:
+          type: array
+          items:
+            type: integer
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/TicketRelation"
+        parent:
+          oneOf:
+            - $ref: "#/components/schemas/TicketRelation"
+            - type: "null"
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/TicketRelation"
+      required:
+        [id, boardId, laneId, parentTicketId, title, bodyMarkdown, bodyHtml, isCompleted, priority, position, createdAt, updatedAt, labels, comments, blockerIds, blockers, parent, children]
+    TicketUpsert:
+      type: object
+      properties:
+        laneId: { type: integer }
+        parentTicketId:
+          type: [integer, "null"]
+        title: { type: string }
+        bodyMarkdown: { type: string }
+        isCompleted: { type: boolean }
+        priority: { type: integer }
+        labelIds:
+          type: array
+          items:
+            type: integer
+        blockerIds:
+          type: array
+          items:
+            type: integer
+    BoardDetail:
+      type: object
+      properties:
+        board:
+          $ref: "#/components/schemas/Board"
+        lanes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Lane"
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/Label"
+        tickets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Ticket"
+      required: [board, lanes, labels, tickets]
+    BoardExport:
+      type: object
+      properties:
+        board:
+          $ref: "#/components/schemas/Board"
+        lanes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Lane"
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/Label"
+        tickets:
+          type: array
+          items:
+            type: object
+      required: [board, lanes, labels, tickets]

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SoloBoard</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-head">
+          <div class="sidebar-brand">
+            <button id="sidebar-toggle-button" type="button" class="icon-button ghost" title="Toggle sidebar">⟨</button>
+            <h1>SoloBoard</h1>
+          </div>
+          <button id="new-board-button" type="button" class="icon-button" title="New board">+</button>
+        </div>
+        <div id="board-list" class="board-list"></div>
+
+        <section id="sidebar-view-section" class="sidebar-section">
+          <div class="sidebar-section-head">
+            <h3>View</h3>
+          </div>
+          <div id="view-mode-toggle" class="filter-toggle sidebar-toggle" role="group" aria-label="View mode">
+            <button type="button" data-view-mode="kanban" class="active">Kanban</button>
+            <button type="button" data-view-mode="list">List</button>
+          </div>
+        </section>
+
+        <section id="sidebar-label-section" class="sidebar-section" hidden>
+          <div class="sidebar-section-head">
+            <h3>Labels</h3>
+            <button id="new-sidebar-label-button" type="button" class="icon-button" title="New label">+</button>
+          </div>
+          <div id="sidebar-label-list" class="sidebar-label-list"></div>
+        </section>
+
+        <section id="sidebar-board-section" class="sidebar-section" hidden>
+          <div class="sidebar-section-head">
+            <h3>Board</h3>
+          </div>
+          <div class="sidebar-board-actions">
+            <div class="sidebar-board-transfer">
+              <button id="export-board-button" type="button">Export</button>
+              <label class="import-button" title="Import board">
+                Import
+                <input id="import-board-input" type="file" accept="application/json" hidden />
+              </label>
+            </div>
+            <button id="rename-board-button" type="button">Rename</button>
+            <button id="delete-board-button" type="button" class="danger">Delete</button>
+          </div>
+        </section>
+      </aside>
+
+      <main class="main">
+        <header class="toolbar">
+          <div class="board-title-row">
+            <button id="sidebar-reopen-button" type="button" class="icon-button ghost" title="Open sidebar" hidden>☰</button>
+            <h2 id="board-title">No board selected</h2>
+          </div>
+          <div class="toolbar-actions">
+            <input id="search-input" type="search" placeholder="Search tickets" />
+            <select id="lane-filter" hidden>
+              <option value="">All lanes</option>
+            </select>
+            <div id="completed-filter" class="filter-toggle" role="group" aria-label="Completion filter">
+              <button type="button" data-value="" class="active">All</button>
+              <button type="button" data-value="false">Open</button>
+              <button type="button" data-value="true">Done</button>
+            </div>
+            <select id="label-filter">
+              <option value="">All labels</option>
+            </select>
+          </div>
+        </header>
+
+        <section id="lane-board" class="lane-board empty">
+          <div class="empty-state">
+            <p>Create a board to start tracking tasks.</p>
+          </div>
+        </section>
+        <section id="list-board" class="list-board" hidden></section>
+      </main>
+    </div>
+
+    <dialog id="editor-dialog" class="editor-dialog">
+      <div class="editor-form">
+        <div class="editor-header">
+          <h3 id="editor-title">Ticket</h3>
+          <button id="close-dialog-button" type="button" class="ghost">Close</button>
+        </div>
+
+        <section id="ticket-view" class="ticket-view" hidden>
+          <div class="ticket-view-head">
+            <div>
+              <div id="ticket-view-id" class="muted"></div>
+              <h4 id="ticket-view-title" class="ticket-detail-title"></h4>
+            </div>
+            <button id="edit-ticket-button" type="button">Edit</button>
+          </div>
+
+          <div id="ticket-view-meta" class="ticket-view-meta"></div>
+          <div id="ticket-view-body" class="markdown ticket-view-body"></div>
+          <div id="ticket-relations" class="ticket-relations"></div>
+
+          <section class="comments-section">
+            <div class="preview-head">Comments</div>
+            <div id="ticket-comments" class="comments-list"></div>
+            <form id="comment-form" class="comment-form">
+              <label>
+                Add Comment
+                <textarea id="comment-body" rows="5"></textarea>
+              </label>
+              <div class="editor-actions">
+                <button id="save-comment-button" type="button">Add Comment</button>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <form id="editor-form" method="dialog" class="editor-mode" hidden>
+          <label>
+            Title
+            <input id="ticket-title" name="title" required />
+          </label>
+
+          <label>
+            Markdown
+            <textarea id="ticket-body" name="bodyMarkdown" rows="10"></textarea>
+          </label>
+
+          <label>
+            Lane
+            <select id="ticket-lane" name="laneId"></select>
+          </label>
+
+          <label>
+            Parent
+            <select id="ticket-parent" name="parentTicketId">
+              <option value="">No parent</option>
+            </select>
+          </label>
+
+          <label>
+            Priority
+            <input id="ticket-priority" name="priority" type="number" step="1" value="0" />
+          </label>
+
+          <label id="ticket-completed-row" class="checkbox">
+            <input id="ticket-completed" name="isCompleted" type="checkbox" />
+            Completed
+          </label>
+
+          <label>
+            Tags
+            <div class="ticket-tag-field">
+              <div id="ticket-label-toggle" class="ticket-tag-input" aria-expanded="false" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                <div id="ticket-label-summary" class="ticket-label-summary"></div>
+                <input id="ticket-label-search" type="text" class="ticket-tag-search" placeholder="Add tags" autocomplete="off" />
+              </div>
+              <div id="ticket-label-options" class="ticket-label-options" hidden></div>
+            </div>
+          </label>
+
+          <label>
+            Blockers
+            <div class="ticket-tag-field">
+              <div id="ticket-blocker-toggle" class="ticket-tag-input" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                <div id="ticket-blocker-summary" class="ticket-label-summary"></div>
+                <input id="ticket-blocker-search" type="text" class="ticket-tag-search" placeholder="Add blockers by ID or title" autocomplete="off" />
+              </div>
+              <div id="ticket-blocker-options" class="ticket-label-options" hidden></div>
+            </div>
+          </label>
+
+          <label id="ticket-children-row">
+            Children
+            <div class="ticket-tag-field">
+              <div id="ticket-child-toggle" class="ticket-tag-input" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                <div id="ticket-child-summary" class="ticket-label-summary"></div>
+                <input id="ticket-child-search" type="text" class="ticket-tag-search" placeholder="Add children by ID or title" autocomplete="off" />
+              </div>
+              <div id="ticket-child-options" class="ticket-label-options" hidden></div>
+            </div>
+          </label>
+
+          <div class="editor-actions">
+            <button id="delete-ticket-button" type="button" class="danger">Delete</button>
+            <div class="editor-actions-right">
+              <button id="cancel-edit-button" type="button" class="ghost">Cancel</button>
+              <button id="save-ticket-button" type="submit">Save</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    
+
+    <dialog id="ux-dialog" class="ux-dialog">
+      <form id="ux-form" class="ux-form" method="dialog">
+        <div class="editor-header">
+          <h3 id="ux-title">Action</h3>
+          <button id="ux-cancel-button" type="button" class="ghost">Close</button>
+        </div>
+        <p id="ux-message" class="muted" hidden></p>
+        <div id="ux-fields" class="ux-fields"></div>
+        <div id="ux-error" class="danger" hidden></div>
+        <div class="editor-actions">
+          <button id="ux-dismiss-button" type="button" class="ghost">Cancel</button>
+          <button id="ux-submit-button" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
