@@ -12,6 +12,321 @@ type BuildAppOptions = {
   staticDir?: string;
 };
 
+type TicketMutationBody = {
+  laneId?: number;
+  parentTicketId?: number | null;
+  title?: string;
+  bodyMarkdown?: string;
+  isCompleted?: boolean;
+  priority?: number;
+  labelIds?: number[];
+  blockerIds?: number[];
+};
+
+type TicketTransitionBody = {
+  laneName?: string;
+  isCompleted?: boolean;
+};
+
+const positiveIntegerSchema = { type: "integer", minimum: 1 } as const;
+
+const optionalPositiveIntegerArraySchema = {
+  type: "array",
+  items: positiveIntegerSchema,
+} as const;
+
+const errorSchema = {
+  type: "object",
+  required: ["error"],
+  additionalProperties: false,
+  properties: {
+    error: { type: "string" },
+  },
+} as const;
+
+const healthResponseSchema = {
+  type: "object",
+  required: ["ok"],
+  additionalProperties: false,
+  properties: {
+    ok: { type: "boolean" },
+  },
+} as const;
+
+const boardViewSchema = {
+  type: "object",
+  required: ["id", "name", "createdAt", "updatedAt"],
+  additionalProperties: false,
+  properties: {
+    id: positiveIntegerSchema,
+    name: { type: "string" },
+    createdAt: { type: "string" },
+    updatedAt: { type: "string" },
+  },
+} as const;
+
+const laneViewSchema = {
+  type: "object",
+  required: ["id", "boardId", "name", "position"],
+  additionalProperties: false,
+  properties: {
+    id: positiveIntegerSchema,
+    boardId: positiveIntegerSchema,
+    name: { type: "string" },
+    position: { type: "integer", minimum: 0 },
+  },
+} as const;
+
+const labelViewSchema = {
+  type: "object",
+  required: ["id", "boardId", "name", "color"],
+  additionalProperties: false,
+  properties: {
+    id: positiveIntegerSchema,
+    boardId: positiveIntegerSchema,
+    name: { type: "string" },
+    color: { type: "string" },
+  },
+} as const;
+
+const commentViewSchema = {
+  type: "object",
+  required: ["id", "ticketId", "bodyMarkdown", "bodyHtml", "createdAt"],
+  additionalProperties: false,
+  properties: {
+    id: positiveIntegerSchema,
+    ticketId: positiveIntegerSchema,
+    bodyMarkdown: { type: "string" },
+    bodyHtml: { type: "string" },
+    createdAt: { type: "string" },
+  },
+} as const;
+
+const boardsResponseSchema = {
+  type: "object",
+  required: ["boards"],
+  additionalProperties: false,
+  properties: {
+    boards: {
+      type: "array",
+      items: boardViewSchema,
+    },
+  },
+} as const;
+
+const lanesResponseSchema = {
+  type: "object",
+  required: ["lanes"],
+  additionalProperties: false,
+  properties: {
+    lanes: {
+      type: "array",
+      items: laneViewSchema,
+    },
+  },
+} as const;
+
+const labelsResponseSchema = {
+  type: "object",
+  required: ["labels"],
+  additionalProperties: false,
+  properties: {
+    labels: {
+      type: "array",
+      items: labelViewSchema,
+    },
+  },
+} as const;
+
+const commentsResponseSchema = {
+  type: "object",
+  required: ["comments"],
+  additionalProperties: false,
+  properties: {
+    comments: {
+      type: "array",
+      items: commentViewSchema,
+    },
+  },
+} as const;
+
+const ticketSummarySchema = {
+  type: "object",
+  additionalProperties: true,
+  required: ["id", "boardId", "laneId", "title", "isCompleted", "priority", "ref", "shortRef"],
+  properties: {
+    id: positiveIntegerSchema,
+    boardId: positiveIntegerSchema,
+    laneId: positiveIntegerSchema,
+    title: { type: "string" },
+    isCompleted: { type: "boolean" },
+    priority: { type: "number" },
+    ref: { type: "string" },
+    shortRef: { type: "string" },
+  },
+} as const;
+
+const ticketsResponseSchema = {
+  type: "object",
+  required: ["tickets"],
+  additionalProperties: false,
+  properties: {
+    tickets: {
+      type: "array",
+      items: ticketSummarySchema,
+    },
+  },
+} as const;
+
+function idParamsSchema(key: string) {
+  return {
+    type: "object",
+    required: [key],
+    additionalProperties: false,
+    properties: {
+      [key]: positiveIntegerSchema,
+    },
+  } as const;
+}
+
+const boardCreateBodySchema = {
+  type: "object",
+  required: ["name"],
+  additionalProperties: false,
+  properties: {
+    name: { type: "string", minLength: 1 },
+    laneNames: {
+      type: "array",
+      items: { type: "string", minLength: 1 },
+    },
+  },
+} as const;
+
+const boardRenameBodySchema = {
+  type: "object",
+  required: ["name"],
+  additionalProperties: false,
+  properties: {
+    name: { type: "string", minLength: 1 },
+  },
+} as const;
+
+const laneBodySchema = {
+  type: "object",
+  required: ["name"],
+  additionalProperties: false,
+  properties: {
+    name: { type: "string", minLength: 1 },
+  },
+} as const;
+
+const reorderLanesBodySchema = {
+  type: "object",
+  required: ["laneIds"],
+  additionalProperties: false,
+  properties: {
+    laneIds: optionalPositiveIntegerArraySchema,
+  },
+} as const;
+
+const labelCreateBodySchema = {
+  type: "object",
+  required: ["name"],
+  additionalProperties: false,
+  properties: {
+    name: { type: "string", minLength: 1 },
+    color: { type: "string", minLength: 1 },
+  },
+} as const;
+
+const labelUpdateBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  minProperties: 1,
+  properties: {
+    name: { type: "string", minLength: 1 },
+    color: { type: "string", minLength: 1 },
+  },
+} as const;
+
+const ticketMutationBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    laneId: positiveIntegerSchema,
+    parentTicketId: {
+      anyOf: [positiveIntegerSchema, { type: "null" }],
+    },
+    title: { type: "string", minLength: 1 },
+    bodyMarkdown: { type: "string" },
+    isCompleted: { type: "boolean" },
+    priority: { type: "number" },
+    labelIds: optionalPositiveIntegerArraySchema,
+    blockerIds: optionalPositiveIntegerArraySchema,
+  },
+} as const;
+
+const ticketCreateBodySchema = {
+  ...ticketMutationBodySchema,
+  required: ["laneId", "title"],
+} as const;
+
+const ticketUpdateBodySchema = {
+  ...ticketMutationBodySchema,
+  minProperties: 1,
+} as const;
+
+const ticketTransitionBodySchema = {
+  type: "object",
+  required: ["laneName"],
+  additionalProperties: false,
+  properties: {
+    laneName: { type: "string", minLength: 1 },
+    isCompleted: { type: "boolean" },
+  },
+} as const;
+
+const ticketCommentBodySchema = {
+  type: "object",
+  required: ["bodyMarkdown"],
+  additionalProperties: false,
+  properties: {
+    bodyMarkdown: { type: "string", minLength: 1 },
+  },
+} as const;
+
+const ticketListQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    lane_id: positiveIntegerSchema,
+    label: { type: "string" },
+    completed: { type: "string", enum: ["true", "false"] },
+    q: { type: "string" },
+  },
+} as const;
+
+const reorderTicketsBodySchema = {
+  type: "object",
+  required: ["items"],
+  additionalProperties: false,
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["ticketId", "laneId", "position"],
+        additionalProperties: false,
+        properties: {
+          ticketId: positiveIntegerSchema,
+          laneId: positiveIntegerSchema,
+          position: { type: "integer", minimum: 0 },
+        },
+      },
+    },
+  },
+} as const;
+
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = fastify({ logger: false });
   const db = new KanbanDb(options.dbFile);
@@ -67,11 +382,30 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     prefix: "/",
   });
 
-  app.get("/api/health", async () => ({ ok: true }));
+  app.get("/api/health", {
+    schema: {
+      response: {
+        200: healthResponseSchema,
+      },
+    },
+  }, async () => ({ ok: true }));
 
-  app.get("/api/boards", async () => ({ boards: db.listBoards() }));
+  app.get("/api/boards", {
+    schema: {
+      response: {
+        200: boardsResponseSchema,
+      },
+    },
+  }, async () => ({ boards: db.listBoards() }));
 
-  app.get("/api/boards/:boardId/events", async (request, reply) => {
+  app.get("/api/boards/:boardId/events", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      response: {
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
     if (!db.getBoard(boardId)) {
       return reply.code(404).send({ error: "board not found" });
@@ -101,7 +435,18 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     reply.hijack();
   });
 
-  app.post("/api/boards", async (request, reply) => {
+  app.post("/api/boards", {
+    schema: {
+      body: boardCreateBodySchema,
+      response: {
+        201: {
+          type: "object",
+          additionalProperties: true,
+        },
+        400: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const body = request.body as { name?: string; laneNames?: string[] };
     const name = body?.name?.trim();
     if (!name) {
@@ -112,7 +457,18 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     return reply.code(201).send(board);
   });
 
-  app.get("/api/boards/:boardId", async (request, reply) => {
+  app.get("/api/boards/:boardId", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      response: {
+        200: {
+          type: "object",
+          additionalProperties: true,
+        },
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     try {
       return db.getBoardDetail(getIdParam(request.params, "boardId"));
     } catch {
@@ -120,7 +476,17 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.patch("/api/boards/:boardId", async (request, reply) => {
+  app.patch("/api/boards/:boardId", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      body: boardRenameBodySchema,
+      response: {
+        200: boardViewSchema,
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const body = request.body as { name?: string };
     const name = body?.name?.trim();
     if (!name) {
@@ -135,7 +501,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.delete("/api/boards/:boardId", async (request, reply) => {
+  app.delete("/api/boards/:boardId", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      response: {
+        204: { type: "null" },
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
     try {
       db.deleteBoard(boardId);
@@ -146,7 +520,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.get("/api/boards/:boardId/lanes", async (request, reply) => {
+  app.get("/api/boards/:boardId/lanes", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      response: {
+        200: lanesResponseSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
     if (!db.getBoard(boardId)) {
       return reply.code(404).send({ error: "board not found" });
@@ -154,7 +536,17 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     return { lanes: db.listLanes(boardId) };
   });
 
-  app.post("/api/boards/:boardId/lanes", async (request, reply) => {
+  app.post("/api/boards/:boardId/lanes", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      body: laneBodySchema,
+      response: {
+        201: laneViewSchema,
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
     const body = request.body as { name?: string };
     const name = body?.name?.trim();
@@ -169,7 +561,17 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     return reply.code(201).send(lane);
   });
 
-  app.patch("/api/lanes/:laneId", async (request, reply) => {
+  app.patch("/api/lanes/:laneId", {
+    schema: {
+      params: idParamsSchema("laneId"),
+      body: laneBodySchema,
+      response: {
+        200: laneViewSchema,
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const body = request.body as { name?: string };
     const name = body?.name?.trim();
     if (!name) {
@@ -184,7 +586,16 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.delete("/api/lanes/:laneId", async (request, reply) => {
+  app.delete("/api/lanes/:laneId", {
+    schema: {
+      params: idParamsSchema("laneId"),
+      response: {
+        204: { type: "null" },
+        404: errorSchema,
+        409: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const laneId = getIdParam(request.params, "laneId");
     const lane = db.getLane(laneId);
     if (!lane) {
@@ -201,7 +612,16 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.post("/api/boards/:boardId/lanes/reorder", async (request, reply) => {
+  app.post("/api/boards/:boardId/lanes/reorder", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      body: reorderLanesBodySchema,
+      response: {
+        200: lanesResponseSchema,
+        400: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
     const body = request.body as { laneIds?: number[] };
     if (!Array.isArray(body?.laneIds)) {
@@ -217,7 +637,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.get("/api/boards/:boardId/labels", async (request, reply) => {
+  app.get("/api/boards/:boardId/labels", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      response: {
+        200: labelsResponseSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
     if (!db.getBoard(boardId)) {
       return reply.code(404).send({ error: "board not found" });
@@ -225,7 +653,18 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     return { labels: db.listLabels(boardId) };
   });
 
-  app.post("/api/boards/:boardId/labels", async (request, reply) => {
+  app.post("/api/boards/:boardId/labels", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      body: labelCreateBodySchema,
+      response: {
+        201: labelViewSchema,
+        400: errorSchema,
+        404: errorSchema,
+        409: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
     const body = request.body as { name?: string; color?: string };
     const name = body?.name?.trim();
@@ -244,7 +683,17 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.patch("/api/labels/:labelId", async (request, reply) => {
+  app.patch("/api/labels/:labelId", {
+    schema: {
+      params: idParamsSchema("labelId"),
+      body: labelUpdateBodySchema,
+      response: {
+        200: labelViewSchema,
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const body = request.body as { name?: string; color?: string };
     try {
       const label = db.updateLabel(getIdParam(request.params, "labelId"), {
@@ -258,7 +707,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.delete("/api/labels/:labelId", async (request, reply) => {
+  app.delete("/api/labels/:labelId", {
+    schema: {
+      params: idParamsSchema("labelId"),
+      response: {
+        204: { type: "null" },
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const labelId = getIdParam(request.params, "labelId");
     const label = db.getLabel(labelId);
     if (!label) {
@@ -273,7 +730,16 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.get("/api/boards/:boardId/tickets", async (request, reply) => {
+  app.get("/api/boards/:boardId/tickets", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      querystring: ticketListQuerySchema,
+      response: {
+        200: ticketsResponseSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
     if (!db.getBoard(boardId)) {
       return reply.code(404).send({ error: "board not found" });
@@ -295,18 +761,22 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     };
   });
 
-  app.post("/api/boards/:boardId/tickets", async (request, reply) => {
+  app.post("/api/boards/:boardId/tickets", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      body: ticketCreateBodySchema,
+      response: {
+        201: {
+          type: "object",
+          additionalProperties: true,
+        },
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
-    const body = request.body as {
-      laneId?: number;
-      parentTicketId?: number | null;
-      title?: string;
-      bodyMarkdown?: string;
-      isCompleted?: boolean;
-      priority?: number;
-      labelIds?: number[];
-      blockerIds?: number[];
-    };
+    const body = parseTicketMutationBody(request.body as TicketMutationBody);
     if (!db.getBoard(boardId)) {
       return reply.code(404).send({ error: "board not found" });
     }
@@ -333,7 +803,18 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.get("/api/tickets/:ticketId", async (request, reply) => {
+  app.get("/api/tickets/:ticketId", {
+    schema: {
+      params: idParamsSchema("ticketId"),
+      response: {
+        200: {
+          type: "object",
+          additionalProperties: true,
+        },
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const ticket = db.getTicket(getIdParam(request.params, "ticketId"));
     if (!ticket) {
       return reply.code(404).send({ error: "ticket not found" });
@@ -341,7 +822,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     return ticket;
   });
 
-  app.get("/api/tickets/:ticketId/comments", async (request, reply) => {
+  app.get("/api/tickets/:ticketId/comments", {
+    schema: {
+      params: idParamsSchema("ticketId"),
+      response: {
+        200: commentsResponseSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     try {
       return { comments: db.listComments(getIdParam(request.params, "ticketId")) };
     } catch {
@@ -349,7 +838,18 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.get("/api/tickets/:ticketId/relations", async (request, reply) => {
+  app.get("/api/tickets/:ticketId/relations", {
+    schema: {
+      params: idParamsSchema("ticketId"),
+      response: {
+        200: {
+          type: "object",
+          additionalProperties: true,
+        },
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     try {
       return db.getTicketRelations(getIdParam(request.params, "ticketId"));
     } catch {
@@ -357,7 +857,17 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.post("/api/tickets/:ticketId/comments", async (request, reply) => {
+  app.post("/api/tickets/:ticketId/comments", {
+    schema: {
+      params: idParamsSchema("ticketId"),
+      body: ticketCommentBodySchema,
+      response: {
+        201: commentViewSchema,
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const body = request.body as { bodyMarkdown?: string };
     const bodyMarkdown = body?.bodyMarkdown?.trim();
     if (!bodyMarkdown) {
@@ -378,17 +888,21 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.patch("/api/tickets/:ticketId", async (request, reply) => {
-    const body = request.body as {
-      laneId?: number;
-      parentTicketId?: number | null;
-      title?: string;
-      bodyMarkdown?: string;
-      isCompleted?: boolean;
-      priority?: number;
-      labelIds?: number[];
-      blockerIds?: number[];
-    };
+  app.patch("/api/tickets/:ticketId", {
+    schema: {
+      params: idParamsSchema("ticketId"),
+      body: ticketUpdateBodySchema,
+      response: {
+        200: {
+          type: "object",
+          additionalProperties: true,
+        },
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const body = parseTicketMutationBody(request.body as TicketMutationBody);
     try {
       const ticket = db.updateTicket(getIdParam(request.params, "ticketId"), {
         laneId: body.laneId,
@@ -409,8 +923,21 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.patch("/api/tickets/:ticketId/transition", async (request, reply) => {
-    const body = request.body as { laneName?: string; isCompleted?: boolean };
+  app.patch("/api/tickets/:ticketId/transition", {
+    schema: {
+      params: idParamsSchema("ticketId"),
+      body: ticketTransitionBodySchema,
+      response: {
+        200: {
+          type: "object",
+          additionalProperties: true,
+        },
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const body = request.body as TicketTransitionBody;
     const laneName = body?.laneName?.trim();
     if (!laneName) {
       return reply.code(400).send({ error: "lanename is required" });
@@ -430,7 +957,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.delete("/api/tickets/:ticketId", async (request, reply) => {
+  app.delete("/api/tickets/:ticketId", {
+    schema: {
+      params: idParamsSchema("ticketId"),
+      response: {
+        204: { type: "null" },
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const ticketId = getIdParam(request.params, "ticketId");
     const ticket = db.getTicket(ticketId);
     if (!ticket) {
@@ -445,7 +980,16 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.post("/api/boards/:boardId/tickets/reorder", async (request, reply) => {
+  app.post("/api/boards/:boardId/tickets/reorder", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      body: reorderTicketsBodySchema,
+      response: {
+        200: ticketsResponseSchema,
+        400: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
     const body = request.body as {
       items?: Array<{ ticketId: number; laneId: number; position: number }>;
@@ -463,7 +1007,18 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.get("/api/boards/:boardId/export", async (request, reply) => {
+  app.get("/api/boards/:boardId/export", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      response: {
+        200: {
+          type: "object",
+          additionalProperties: true,
+        },
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
     try {
       return db.exportBoard(getIdParam(request.params, "boardId"));
     } catch {
@@ -511,6 +1066,10 @@ function setErrorHandler(app: FastifyInstance): void {
     if (reply.sent) {
       return;
     }
+    if (error instanceof Error && typeof error === "object" && "validation" in error) {
+      reply.code(400).send({ error: error.message });
+      return;
+    }
     const message = error instanceof Error ? error.message : "internal server error";
     reply.code(500).send({ error: message });
   });
@@ -533,4 +1092,17 @@ function sanitizeStringArray(values: unknown): string[] | undefined {
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .filter(Boolean);
   return result.length > 0 ? result : undefined;
+}
+
+function parseTicketMutationBody(body: TicketMutationBody): TicketMutationBody {
+  return {
+    laneId: body?.laneId,
+    parentTicketId: body?.parentTicketId,
+    title: typeof body?.title === "string" ? body.title.trim() : undefined,
+    bodyMarkdown: body?.bodyMarkdown,
+    isCompleted: body?.isCompleted,
+    priority: typeof body?.priority === "number" ? body.priority : undefined,
+    labelIds: Array.isArray(body?.labelIds) ? body.labelIds : undefined,
+    blockerIds: Array.isArray(body?.blockerIds) ? body.blockerIds : undefined,
+  };
 }

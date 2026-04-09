@@ -242,18 +242,18 @@ test("comment list, relations, transition, and canonical refs", async () => {
   assert.equal(relations.children[0].id, child.id);
   assert.equal(relations.children[0].laneId, todoLane.id);
   assert.equal(relations.children[0].ref, `Portal#${child.id}`);
-  assert.equal(relations.blockedBy.length, 1);
-  assert.equal(relations.blockedBy[0].id, dependency.id);
-  assert.equal(relations.blockedBy[0].laneId, inProgressLane.id);
-  assert.equal(relations.blockers.length, 0);
+  assert.equal(relations.blockers.length, 1);
+  assert.equal(relations.blockers[0].id, dependency.id);
+  assert.equal(relations.blockers[0].laneId, inProgressLane.id);
+  assert.equal(relations.blockedBy.length, 0);
 
   const reverseRelationsResponse = await app.inject({
     method: "GET",
     url: `/api/tickets/${dependency.id}/relations`,
   });
   assert.equal(reverseRelationsResponse.statusCode, 200);
-  assert.equal(reverseRelationsResponse.json().blockers.length, 1);
-  assert.equal(reverseRelationsResponse.json().blockers[0].id, parent.id);
+  assert.equal(reverseRelationsResponse.json().blockedBy.length, 1);
+  assert.equal(reverseRelationsResponse.json().blockedBy[0].id, parent.id);
 
   const transitionResponse = await app.inject({
     method: "PATCH",
@@ -283,6 +283,20 @@ test("comment list, relations, transition, and canonical refs", async () => {
     payload: { laneName: "Nope" },
   });
   assert.equal(invalidTransition.statusCode, 400);
+
+  const schemaRejectedTransition = await app.inject({
+    method: "PATCH",
+    url: `/api/tickets/${parent.id}/transition`,
+    payload: {},
+  });
+  assert.equal(schemaRejectedTransition.statusCode, 400);
+
+  const schemaRejectedTicketCreate = await app.inject({
+    method: "POST",
+    url: `/api/boards/${board.board.id}/tickets`,
+    payload: { laneId: todoLane.id, title: "", unexpected: true },
+  });
+  assert.equal(schemaRejectedTicketCreate.statusCode, 400);
 
   await app.close();
 });

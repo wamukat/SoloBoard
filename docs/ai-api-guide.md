@@ -89,8 +89,8 @@ ID ベース:
 
 - `GET /api/tickets/:ticketId/relations`
 - `parent`, `children`, `blockers`, `blockedBy` が返る
-- `blockers` は「このチケットが block している相手」
-- `blockedBy` は「このチケットを block している相手」
+- `blockers` は「このチケットを block している相手」
+- `blockedBy` は「このチケットに block されている相手」
 
 ### チケットを完了にしたい
 

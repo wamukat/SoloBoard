@@ -70,6 +70,16 @@ type ReorderTicketInput = {
   position: number;
 };
 
+type TicketRelationRow = {
+  ticket_id: Id;
+  id: Id;
+  title: string;
+  lane_id: Id;
+  is_completed: number;
+  priority: number;
+  board_name: string;
+};
+
 const DEFAULT_LANES = ["todo", "doing", "done"];
 const DEFAULT_LABEL_COLOR = "#6b7280";
 
@@ -518,8 +528,8 @@ export class KanbanDb {
     return {
       parent: ticket.parent,
       children: ticket.children,
-      blockers: this.getBlockedTicketsForTicketIds([ticketId]).get(ticketId) ?? [],
-      blockedBy: this.getBlockersForTicketIds([ticketId]).get(ticketId) ?? [],
+      blockers: this.getBlockersForTicketIds([ticketId]).get(ticketId) ?? [],
+      blockedBy: this.getBlockedTicketsForTicketIds([ticketId]).get(ticketId) ?? [],
     };
   }
 
@@ -792,138 +802,82 @@ export class KanbanDb {
 
   private getParentsForTicketIds(ticketIds: Id[]): Map<Id, TicketRelationView> {
     const parentsByTicket = new Map<Id, TicketRelationView>();
-    if (ticketIds.length === 0) {
-      return parentsByTicket;
-    }
-    const placeholders = ticketIds.map(() => "?").join(", ");
-    const rows = this.sqlite
-      .prepare(
-        `
+    const relationsByTicket = this.getRelationEntriesForTicketIds(
+      ticketIds,
+      `
         SELECT child.id AS ticket_id, parent.id, parent.title, parent.lane_id, parent.is_completed, parent.priority, board.name AS board_name
         FROM tickets child
         INNER JOIN tickets parent ON parent.id = child.parent_ticket_id
         INNER JOIN boards board ON board.id = parent.board_id
-        WHERE child.id IN (${placeholders})
-        `,
-      )
-      .all(...ticketIds) as Array<{
-      ticket_id: Id;
-      id: Id;
-      title: string;
-      lane_id: Id;
-      is_completed: number;
-      priority: number;
-      board_name: string;
-    }>;
-
-    rows.forEach((row) => {
-      parentsByTicket.set(row.ticket_id, mapRelation(row, row.board_name));
+        WHERE child.id IN ({placeholders})
+      `,
+    );
+    relationsByTicket.forEach((relations, ticketId) => {
+      const [parent] = relations;
+      if (parent) {
+        parentsByTicket.set(ticketId, parent);
+      }
     });
     return parentsByTicket;
   }
 
   private getChildrenForTicketIds(ticketIds: Id[]): Map<Id, TicketRelationView[]> {
-    const childrenByTicket = new Map<Id, TicketRelationView[]>();
-    if (ticketIds.length === 0) {
-      return childrenByTicket;
-    }
-    const placeholders = ticketIds.map(() => "?").join(", ");
-    const rows = this.sqlite
-      .prepare(
-        `
+    return this.getRelationEntriesForTicketIds(
+      ticketIds,
+      `
         SELECT parent_ticket_id AS ticket_id, tickets.id, tickets.title, tickets.lane_id, tickets.is_completed, tickets.priority, board.name AS board_name
         FROM tickets
         INNER JOIN boards board ON board.id = tickets.board_id
-        WHERE parent_ticket_id IN (${placeholders})
+        WHERE parent_ticket_id IN ({placeholders})
         ORDER BY tickets.priority DESC, tickets.id ASC
-        `,
-      )
-      .all(...ticketIds) as Array<{
-      ticket_id: Id;
-      id: Id;
-      title: string;
-      lane_id: Id;
-      is_completed: number;
-      priority: number;
-      board_name: string;
-    }>;
-
-    rows.forEach((row) => {
-      const entry = childrenByTicket.get(row.ticket_id) ?? [];
-      entry.push(mapRelation(row, row.board_name));
-      childrenByTicket.set(row.ticket_id, entry);
-    });
-    return childrenByTicket;
+      `,
+    );
   }
 
   private getBlockersForTicketIds(ticketIds: Id[]): Map<Id, TicketBlockerView[]> {
-    const blockersByTicket = new Map<Id, TicketBlockerView[]>();
-    if (ticketIds.length === 0) {
-      return blockersByTicket;
-    }
-    const placeholders = ticketIds.map(() => "?").join(", ");
-    const rows = this.sqlite
-      .prepare(
-        `
+    return this.getRelationEntriesForTicketIds(
+      ticketIds,
+      `
         SELECT tb.ticket_id, t.id, t.title, t.lane_id, t.is_completed, t.priority, board.name AS board_name
         FROM ticket_blockers tb
         INNER JOIN tickets t ON t.id = tb.blocker_ticket_id
         INNER JOIN boards board ON board.id = t.board_id
-        WHERE tb.ticket_id IN (${placeholders})
+        WHERE tb.ticket_id IN ({placeholders})
         ORDER BY t.priority DESC, t.id ASC
-        `,
-      )
-      .all(...ticketIds) as Array<{
-      ticket_id: Id;
-      id: Id;
-      title: string;
-      lane_id: Id;
-      is_completed: number;
-      priority: number;
-      board_name: string;
-    }>;
-
-    rows.forEach((row) => {
-      const entry = blockersByTicket.get(row.ticket_id) ?? [];
-      entry.push(mapRelation(row, row.board_name));
-      blockersByTicket.set(row.ticket_id, entry);
-    });
-    return blockersByTicket;
+      `,
+    );
   }
 
   private getBlockedTicketsForTicketIds(ticketIds: Id[]): Map<Id, TicketRelationView[]> {
-    const blockedTicketsByTicket = new Map<Id, TicketRelationView[]>();
-    if (ticketIds.length === 0) {
-      return blockedTicketsByTicket;
-    }
-    const placeholders = ticketIds.map(() => "?").join(", ");
-    const rows = this.sqlite
-      .prepare(
-        `
+    return this.getRelationEntriesForTicketIds(
+      ticketIds,
+      `
         SELECT tb.blocker_ticket_id AS ticket_id, t.id, t.title, t.lane_id, t.is_completed, t.priority, board.name AS board_name
         FROM ticket_blockers tb
         INNER JOIN tickets t ON t.id = tb.ticket_id
         INNER JOIN boards board ON board.id = t.board_id
-        WHERE tb.blocker_ticket_id IN (${placeholders})
+        WHERE tb.blocker_ticket_id IN ({placeholders})
         ORDER BY t.priority DESC, t.id ASC
-        `,
-      )
-      .all(...ticketIds) as Array<{
-      ticket_id: Id;
-      id: Id;
-      title: string;
-      lane_id: Id;
-      is_completed: number;
-      priority: number;
-      board_name: string;
-    }>;
+      `,
+    );
+  }
+
+  private getRelationEntriesForTicketIds(ticketIds: Id[], query: string): Map<Id, TicketRelationView[]> {
+    const relationsByTicket = new Map<Id, TicketRelationView[]>();
+    if (ticketIds.length === 0) {
+      return relationsByTicket;
+    }
+    const placeholders = ticketIds.map(() => "?").join(", ");
+    const rows = this.sqlite
+      .prepare(query.replace("{placeholders}", placeholders))
+      .all(...ticketIds) as TicketRelationRow[];
 
     rows.forEach((row) => {
-      const entry = blockedTicketsByTicket.get(row.ticket_id) ?? [];
+      const entry = relationsByTicket.get(row.ticket_id) ?? [];
       entry.push(mapRelation(row, row.board_name));
-      blockedTicketsByTicket.set(row.ticket_id, entry);
+      relationsByTicket.set(row.ticket_id, entry);
     });
-    return blockedTicketsByTicket;
+    return relationsByTicket;
   }
 
 }
