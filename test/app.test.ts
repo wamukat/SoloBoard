@@ -248,6 +248,18 @@ test("comment list, relations, transition, and canonical refs", async () => {
   assert.equal(ticketDetail.statusCode, 200);
   assert.equal(ticketDetail.json().ref, `Portal#${parent.id}`);
   assert.equal(ticketDetail.json().shortRef, `#${parent.id}`);
+  assert.equal(ticketDetail.json().children.length, 1);
+  assert.equal(ticketDetail.json().children[0].id, child.id);
+  assert.equal(ticketDetail.json().blockers.length, 1);
+  assert.equal(ticketDetail.json().blockers[0].id, dependency.id);
+
+  const dependencyDetail = await app.inject({
+    method: "GET",
+    url: `/api/tickets/${dependency.id}`,
+  });
+  assert.equal(dependencyDetail.statusCode, 200);
+  assert.equal(dependencyDetail.json().blockedBy.length, 1);
+  assert.equal(dependencyDetail.json().blockedBy[0].id, parent.id);
 
   const commentsResponse = await app.inject({
     method: "GET",
@@ -330,6 +342,28 @@ test("comment list, relations, transition, and canonical refs", async () => {
   assert.equal(reverseRelationsResponse.json().blockedBy.length, 1);
   assert.equal(reverseRelationsResponse.json().blockedBy[0].id, parent.id);
 
+  const clearBlockersResponse = await app.inject({
+    method: "PATCH",
+    url: `/api/tickets/${parent.id}`,
+    payload: { blockerIds: null },
+  });
+  assert.equal(clearBlockersResponse.statusCode, 200);
+  assert.deepEqual(clearBlockersResponse.json().blockerIds, []);
+
+  const reverseRelationsAfterClearResponse = await app.inject({
+    method: "GET",
+    url: `/api/tickets/${dependency.id}/relations`,
+  });
+  assert.equal(reverseRelationsAfterClearResponse.statusCode, 200);
+  assert.equal(reverseRelationsAfterClearResponse.json().blockedBy.length, 0);
+
+  const dependencyDetailAfterClear = await app.inject({
+    method: "GET",
+    url: `/api/tickets/${dependency.id}`,
+  });
+  assert.equal(dependencyDetailAfterClear.statusCode, 200);
+  assert.equal(dependencyDetailAfterClear.json().blockedBy.length, 0);
+
   const clearParentResponse = await app.inject({
     method: "PATCH",
     url: `/api/tickets/${child.id}`,
@@ -344,6 +378,13 @@ test("comment list, relations, transition, and canonical refs", async () => {
   });
   assert.equal(parentRelationsAfterClearResponse.statusCode, 200);
   assert.equal(parentRelationsAfterClearResponse.json().children.length, 0);
+
+  const parentDetailAfterClear = await app.inject({
+    method: "GET",
+    url: `/api/tickets/${parent.id}`,
+  });
+  assert.equal(parentDetailAfterClear.statusCode, 200);
+  assert.equal(parentDetailAfterClear.json().children.length, 0);
 
   const transitionResponse = await app.inject({
     method: "PATCH",
