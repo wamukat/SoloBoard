@@ -371,6 +371,27 @@ const reorderTicketsBodySchema = {
   },
 } as const;
 
+const bulkCompleteTicketsBodySchema = {
+  type: "object",
+  required: ["ticketIds", "isCompleted"],
+  additionalProperties: false,
+  properties: {
+    ticketIds: optionalPositiveIntegerArraySchema,
+    isCompleted: { type: "boolean" },
+  },
+} as const;
+
+const bulkTransitionTicketsBodySchema = {
+  type: "object",
+  required: ["ticketIds", "laneName"],
+  additionalProperties: false,
+  properties: {
+    ticketIds: optionalPositiveIntegerArraySchema,
+    laneName: { type: "string", minLength: 1 },
+    isCompleted: { type: "boolean" },
+  },
+} as const;
+
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = fastify({ logger: false, bodyLimit: 64 * 1024 * 1024 });
   const db = new KanbanDb(options.dbFile);
@@ -841,6 +862,77 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     } catch (error) {
       const message = error instanceof Error ? error.message : "ticket create failed";
       return reply.code(400).send({ error: message });
+    }
+  });
+
+  app.post("/api/boards/:boardId/tickets/bulk-complete", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      body: bulkCompleteTicketsBodySchema,
+      response: {
+        200: ticketsResponseSchema,
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const boardId = getIdParam(request.params, "boardId");
+    const body = request.body as { ticketIds?: number[]; isCompleted?: boolean };
+    if (!db.getBoard(boardId)) {
+      return reply.code(404).send({ error: "board not found" });
+    }
+    if (!Array.isArray(body.ticketIds) || body.ticketIds.length === 0) {
+      return reply.code(400).send({ error: "ticketids is required" });
+    }
+    try {
+      const tickets = db.bulkCompleteTickets({
+        boardId,
+        ticketIds: body.ticketIds,
+        isCompleted: Boolean(body.isCompleted),
+      });
+      publishBoardEvent(boardId);
+      return { tickets };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "bulk complete failed";
+      return reply.code(400).send({ error: message.toLowerCase() });
+    }
+  });
+
+  app.post("/api/boards/:boardId/tickets/bulk-transition", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      body: bulkTransitionTicketsBodySchema,
+      response: {
+        200: ticketsResponseSchema,
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const boardId = getIdParam(request.params, "boardId");
+    const body = request.body as { ticketIds?: number[]; laneName?: string; isCompleted?: boolean };
+    if (!db.getBoard(boardId)) {
+      return reply.code(404).send({ error: "board not found" });
+    }
+    if (!Array.isArray(body.ticketIds) || body.ticketIds.length === 0) {
+      return reply.code(400).send({ error: "ticketids is required" });
+    }
+    const laneName = body.laneName?.trim();
+    if (!laneName) {
+      return reply.code(400).send({ error: "lanename is required" });
+    }
+    try {
+      const tickets = db.bulkTransitionTickets({
+        boardId,
+        ticketIds: body.ticketIds,
+        laneName,
+        isCompleted: body.isCompleted,
+      });
+      publishBoardEvent(boardId);
+      return { tickets };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "bulk transition failed";
+      return reply.code(400).send({ error: message.toLowerCase() });
     }
   });
 

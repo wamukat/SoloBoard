@@ -318,6 +318,78 @@ test("comment list, relations, transition, and canonical refs", async () => {
   await app.close();
 });
 
+test("bulk complete and bulk transition operate on board ticket sets", async () => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+  });
+
+  const createdBoardResponse = await app.inject({
+    method: "POST",
+    url: "/api/boards",
+    payload: { name: "Bulk Board", laneNames: ["Todo", "Doing", "Done"] },
+  });
+  assert.equal(createdBoardResponse.statusCode, 201);
+  const board = createdBoardResponse.json();
+  const [todoLane, doingLane, doneLane] = board.lanes;
+
+  const first = (await app.inject({
+    method: "POST",
+    url: `/api/boards/${board.board.id}/tickets`,
+    payload: { laneId: todoLane.id, title: "One" },
+  })).json();
+  const second = (await app.inject({
+    method: "POST",
+    url: `/api/boards/${board.board.id}/tickets`,
+    payload: { laneId: doingLane.id, title: "Two" },
+  })).json();
+
+  const bulkComplete = await app.inject({
+    method: "POST",
+    url: `/api/boards/${board.board.id}/tickets/bulk-complete`,
+    payload: { ticketIds: [first.id, second.id], isCompleted: true },
+  });
+  assert.equal(bulkComplete.statusCode, 200);
+  assert.deepEqual(
+    bulkComplete.json().tickets.map((ticket: { id: number; isCompleted: boolean }) => [ticket.id, ticket.isCompleted]),
+    [[first.id, true], [second.id, true]],
+  );
+
+  const bulkTransition = await app.inject({
+    method: "POST",
+    url: `/api/boards/${board.board.id}/tickets/bulk-transition`,
+    payload: { ticketIds: [first.id, second.id], laneName: "Done", isCompleted: true },
+  });
+  assert.equal(bulkTransition.statusCode, 200);
+  const transitioned = bulkTransition.json().tickets;
+  assert.equal(transitioned.length, 2);
+  assert.ok(transitioned.every((ticket: { laneId: number; isCompleted: boolean }) => ticket.laneId === doneLane.id));
+  assert.ok(transitioned.every((ticket: { isCompleted: boolean }) => ticket.isCompleted === true));
+
+  const detailOne = await app.inject({
+    method: "GET",
+    url: `/api/tickets/${first.id}`,
+  });
+  assert.equal(detailOne.json().laneId, doneLane.id);
+  assert.equal(detailOne.json().isCompleted, true);
+
+  const missingLaneTransition = await app.inject({
+    method: "POST",
+    url: `/api/boards/${board.board.id}/tickets/bulk-transition`,
+    payload: { ticketIds: [first.id], laneName: "Missing" },
+  });
+  assert.equal(missingLaneTransition.statusCode, 400);
+
+  const missingTicket = await app.inject({
+    method: "POST",
+    url: `/api/boards/${board.board.id}/tickets/bulk-complete`,
+    payload: { ticketIds: [first.id, 99999], isCompleted: false },
+  });
+  assert.equal(missingTicket.statusCode, 400);
+
+  await app.close();
+});
+
 test("reciprocal blockers are rejected", async () => {
   const app = buildApp({
     dbFile: createDbFile(),

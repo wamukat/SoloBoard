@@ -79,6 +79,29 @@ curl -s -X PATCH http://127.0.0.1:3000/api/tickets/6 \
   }'
 ```
 
+## Bulk Mark Done
+
+```bash
+curl -s -X POST http://127.0.0.1:3000/api/boards/3/tickets/bulk-complete \
+  -H 'content-type: application/json' \
+  --data '{
+    "ticketIds": [4, 5, 6],
+    "isCompleted": true
+  }'
+```
+
+## Bulk Transition By Lane Name
+
+```bash
+curl -s -X POST http://127.0.0.1:3000/api/boards/3/tickets/bulk-transition \
+  -H 'content-type: application/json' \
+  --data '{
+    "ticketIds": [4, 5, 6],
+    "laneName": "Done",
+    "isCompleted": true
+  }'
+```
+
 ## Set Blocker
 
 ```bash

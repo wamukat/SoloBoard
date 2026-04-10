@@ -72,6 +72,19 @@ type ReorderTicketInput = {
   position: number;
 };
 
+type BulkCompleteTicketsInput = {
+  boardId: Id;
+  ticketIds: Id[];
+  isCompleted: boolean;
+};
+
+type BulkTransitionTicketsInput = {
+  boardId: Id;
+  ticketIds: Id[];
+  laneName: string;
+  isCompleted?: boolean;
+};
+
 type TicketRelationRow = {
   ticket_id: Id;
   id: Id;
@@ -584,6 +597,69 @@ export class KanbanDb {
     return this.listTickets(boardId);
   }
 
+  bulkCompleteTickets(input: BulkCompleteTicketsInput): TicketSummaryView[] {
+    const rows = this.getTicketRowsForBoard(input.boardId, input.ticketIds);
+    if (rows.length !== input.ticketIds.length) {
+      throw new Error("Some tickets do not belong to board");
+    }
+    if (rows.length === 0) {
+      return [];
+    }
+    const now = this.now();
+    const stmt = this.sqlite.prepare("UPDATE tickets SET is_completed = ?, updated_at = ? WHERE id = ?");
+    const tx = this.sqlite.transaction(() => {
+      rows.forEach((row) => stmt.run(input.isCompleted ? 1 : 0, now, row.id));
+      this.touchBoard(input.boardId);
+    });
+    tx();
+    return this.listTicketSummariesByIds(input.boardId, input.ticketIds);
+  }
+
+  bulkTransitionTickets(input: BulkTransitionTicketsInput): TicketSummaryView[] {
+    const rows = this.getTicketRowsForBoard(input.boardId, input.ticketIds);
+    if (rows.length !== input.ticketIds.length) {
+      throw new Error("Some tickets do not belong to board");
+    }
+    if (rows.length === 0) {
+      return [];
+    }
+    const lane = this.sqlite
+      .prepare("SELECT * FROM lanes WHERE board_id = ? AND name = ?")
+      .get(input.boardId, input.laneName) as LaneRow | undefined;
+    if (!lane) {
+      throw new Error("Lane not found");
+    }
+
+    const now = this.now();
+    const rowsById = new Map(rows.map((row) => [row.id, row]));
+    const movingRows = rows.filter((row) => row.lane_id !== lane.id);
+    const nextPosition = this.nextTicketPosition(lane.id);
+    const updateStmt = this.sqlite.prepare(
+      "UPDATE tickets SET lane_id = ?, position = ?, is_completed = ?, updated_at = ? WHERE id = ?",
+    );
+    const updateSameLaneStmt = this.sqlite.prepare(
+      "UPDATE tickets SET is_completed = ?, updated_at = ? WHERE id = ?",
+    );
+    const tx = this.sqlite.transaction(() => {
+      let targetPosition = nextPosition;
+      for (const ticketId of input.ticketIds) {
+        const row = rowsById.get(ticketId)!;
+        const nextCompleted = typeof input.isCompleted === "boolean" ? Number(input.isCompleted) : row.is_completed;
+        if (row.lane_id === lane.id) {
+          updateSameLaneStmt.run(nextCompleted, now, row.id);
+          continue;
+        }
+        updateStmt.run(lane.id, targetPosition, nextCompleted, now, row.id);
+        targetPosition += 1;
+      }
+      const sourceLaneIds = [...new Set(movingRows.map((row) => row.lane_id))];
+      sourceLaneIds.forEach((laneId) => this.normalizeTicketPositions(laneId));
+      this.touchBoard(input.boardId);
+    });
+    tx();
+    return this.listTicketSummariesByIds(input.boardId, input.ticketIds);
+  }
+
   exportBoard(boardId: Id): BoardExport {
     const detail = this.getBoardDetail(boardId);
     return {
@@ -677,6 +753,19 @@ export class KanbanDb {
     return row ?? null;
   }
 
+  private getTicketRowsForBoard(boardId: Id, ticketIds: Id[]): TicketRow[] {
+    if (ticketIds.length === 0) {
+      return [];
+    }
+    const uniqueIds = [...new Set(ticketIds)];
+    const placeholders = uniqueIds.map(() => "?").join(", ");
+    return this.sqlite
+      .prepare(
+        `SELECT * FROM tickets WHERE board_id = ? AND id IN (${placeholders}) ORDER BY id ASC`,
+      )
+      .all(boardId, ...uniqueIds) as TicketRow[];
+  }
+
   private listTicketRows(boardId: Id, filters: ListTicketsFilters = {}): TicketRow[] {
     let sql = `
       SELECT t.*
@@ -712,6 +801,24 @@ export class KanbanDb {
     sql += " ORDER BY t.lane_id ASC, t.position ASC, t.id ASC";
 
     return this.sqlite.prepare(sql).all(...params) as TicketRow[];
+  }
+
+  private listTicketSummariesByIds(boardId: Id, ticketIds: Id[]): TicketSummaryView[] {
+    const rows = this.getTicketRowsForBoard(boardId, ticketIds);
+    const order = new Map(ticketIds.map((ticketId, index) => [ticketId, index]));
+    const tagsByTicket = this.getTagsForTicketIds(rows.map((row) => row.id));
+    const blockerIdsByTicket = this.getBlockerIdsForTicketIds(rows.map((row) => row.id));
+    const board = this.getBoard(boardId);
+    return rows
+      .map((row) =>
+        mapTicketSummary(
+          row,
+          board?.name ?? "",
+          tagsByTicket.get(row.id) ?? [],
+          blockerIdsByTicket.get(row.id) ?? [],
+        ),
+      )
+      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
 
   private nextLanePosition(boardId: Id): number {

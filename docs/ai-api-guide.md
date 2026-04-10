@@ -17,6 +17,7 @@
    `GET /api/tickets/:ticketId/relations`
 5. 更新は最小差分で `PATCH /api/tickets/:ticketId` を使う。
    lane 名ベース遷移は `PATCH /api/tickets/:ticketId/transition` を使う。
+   複数チケットをまとめて扱うときは board 単位の bulk endpoint を使う。
 6. Kanban 画面の自動更新が必要なら `GET /api/boards/:boardId/events` を購読する。
 
 ## Important Semantics
@@ -89,6 +90,17 @@ ID ベース:
 
 - `POST /api/boards/:boardId/tickets/reorder`
 
+複数チケットをまとめて完了/未完了にしたい:
+
+- `POST /api/boards/:boardId/tickets/bulk-complete`
+- body に `ticketIds` と `isCompleted` を入れる
+
+複数チケットを lane 名でまとめて遷移したい:
+
+- `POST /api/boards/:boardId/tickets/bulk-transition`
+- body に `ticketIds` と `laneName` を入れる
+- 必要なら `isCompleted` も同時指定する
+
 ### relation を取得したい
 
 - `GET /api/tickets/:ticketId/relations`
@@ -138,6 +150,7 @@ ID ベース:
 - blockerIds means "this ticket is blocked by these tickets".
 - Use GET /api/tickets/:ticketId/relations when you need both forward and reverse dependency edges.
 - Use PATCH /api/tickets/:ticketId/transition for lane-name-based transitions.
+- Use board-scoped bulk endpoints when you are updating multiple tickets at once.
 - Prefer ref and shortRef for logs, diagnostics, and summaries.
 - Never create reciprocal blockers.
 - Parent-child depth is one level only.

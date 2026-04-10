@@ -432,6 +432,84 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
+  /api/boards/{boardId}/tickets/bulk-complete:
+    post:
+      summary: Bulk update completion state
+      operationId: bulkCompleteTickets
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticketIds:
+                  type: array
+                  items:
+                    type: integer
+                isCompleted:
+                  type: boolean
+              required: [ticketIds, isCompleted]
+      responses:
+        "200":
+          description: Updated ticket summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tickets:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TicketSummary"
+                required: [tickets]
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/boards/{boardId}/tickets/bulk-transition:
+    post:
+      summary: Bulk transition tickets by lane name
+      operationId: bulkTransitionTickets
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ticketIds:
+                  type: array
+                  items:
+                    type: integer
+                laneName:
+                  type: string
+                isCompleted:
+                  type: boolean
+              required: [ticketIds, laneName]
+      responses:
+        "200":
+          description: Updated ticket summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tickets:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TicketSummary"
+                required: [tickets]
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
   /api/boards/{boardId}/tickets/reorder:
     post:
       summary: Reorder tickets and move between lanes

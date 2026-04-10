@@ -642,14 +642,18 @@ button:hover,
 }
 
 .list-actions {
-  grid-template-columns: repeat(2, minmax(0, 12rem));
+  grid-template-columns: repeat(2, minmax(0, 7rem));
   justify-content: start;
   background: rgba(104, 99, 85, 0.04);
+  padding: 0.35rem 0.7rem;
 }
 
 .list-actions .list-action-button {
   width: 100%;
   justify-content: center;
+  min-height: 2rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
 }
 
 .list-header {

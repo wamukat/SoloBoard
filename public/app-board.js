@@ -266,12 +266,10 @@ export function createBoardModule(ctx) {
     if (ticketIds.length === 0) {
       return;
     }
-    for (const ticketId of ticketIds) {
-      await ctx.sendJson(`/api/tickets/${ticketId}`, {
-        method: "PATCH",
-        body: { isCompleted },
-      });
-    }
+    await ctx.sendJson(`/api/boards/${state.activeBoardId}/tickets/bulk-complete`, {
+      method: "POST",
+      body: { ticketIds, isCompleted },
+    });
     state.selectedListTicketIds = [];
     await ctx.refreshBoardDetail();
   }

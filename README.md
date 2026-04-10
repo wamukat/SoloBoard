@@ -162,6 +162,8 @@ Main endpoints:
 - `GET/POST /api/tickets/:ticketId/comments`
 - `GET /api/tickets/:ticketId/relations`
 - `PATCH /api/tickets/:ticketId/transition`
+- `POST /api/boards/:boardId/tickets/bulk-complete`
+- `POST /api/boards/:boardId/tickets/bulk-transition`
 - `POST /api/boards/:boardId/tickets/reorder`
 - `GET /api/boards/:boardId/export`
 - `POST /api/boards/import`
@@ -174,6 +176,7 @@ Main endpoints:
 - `GET /api/boards/:boardId` returns board shell only; tickets are fetched separately.
 - `GET /api/boards/:boardId/tickets` returns lightweight ticket summaries; use `GET /api/tickets/:ticketId` for full detail.
 - The lightweight ticket summary route is intended for board rendering, filtering, automation scans, and other large-board workflows.
+- Use board-scoped bulk endpoints for batch completion and lane-name-based transitions to keep automation round-trips low.
 - A blocker means "this ticket is blocked by these tickets".
 - Reciprocal blockers are not allowed.
 - Parent/child depth is limited to one level.
