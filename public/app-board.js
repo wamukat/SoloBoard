@@ -144,8 +144,10 @@ export function createBoardModule(ctx) {
     const previousScrollTop = elements.listBoard.querySelector(".list-viewport")?.scrollTop ?? 0;
     const doneButton = `<button type="button" class="list-action-button" data-bulk-complete="true" ${state.selectedListTicketIds.length === 0 ? "disabled" : ""}>Mark Done</button>`;
     const openButton = `<button type="button" class="list-action-button" data-bulk-complete="false" ${state.selectedListTicketIds.length === 0 ? "disabled" : ""}>Mark Open</button>`;
+    const archiveButton = `<button type="button" class="list-action-button" data-bulk-archive="true" ${state.selectedListTicketIds.length === 0 ? "disabled" : ""}>Archive</button>`;
+    const restoreButton = `<button type="button" class="list-action-button" data-bulk-archive="false" ${state.selectedListTicketIds.length === 0 ? "disabled" : ""}>Restore</button>`;
     elements.listBoard.innerHTML = `
-      <div class="list-actions">${doneButton}${openButton}</div>
+      <div class="list-actions">${doneButton}${openButton}${archiveButton}${restoreButton}</div>
       <div class="list-header">
         <div><input type="checkbox" id="list-select-all" ${allSelected ? "checked" : ""} /></div>
         <div>ID / Title</div>
@@ -159,7 +161,7 @@ export function createBoardModule(ctx) {
           <div class="list-window"></div>
         </div>
       </div>
-      <div class="list-actions">${doneButton}${openButton}</div>
+      <div class="list-actions">${doneButton}${openButton}${archiveButton}${restoreButton}</div>
     `;
     listModel = { orderedTickets, visibleTicketIds, rowHeight: LIST_ROW_HEIGHT, overscan: LIST_OVERSCAN };
     const viewport = elements.listBoard.querySelector(".list-viewport");
@@ -226,7 +228,7 @@ export function createBoardModule(ctx) {
     ].filter(Boolean).join(" · ");
     const lane = state.boardDetail.lanes.find((item) => item.id === ticket.laneId);
     return `
-      <div class="list-row ${ticket.isCompleted ? "completed" : ""}" style="height:${LIST_ROW_HEIGHT}px">
+      <div class="list-row ${ticket.isCompleted ? "completed" : ""} ${ticket.isArchived ? "archived" : ""}" style="height:${LIST_ROW_HEIGHT}px">
         <input type="checkbox" data-list-ticket-id="${ticket.id}" ${state.selectedListTicketIds.includes(ticket.id) ? "checked" : ""} />
         <button type="button" class="list-ticket-link indent-${indent}" data-open-ticket-id="${ticket.id}">
           <span class="ticket-id">#${ticket.id}</span>
@@ -235,7 +237,7 @@ export function createBoardModule(ctx) {
         <div class="list-cell muted">${relations || "-"}</div>
         <div class="tag-list">${tags || '<span class="muted">-</span>'}</div>
         <div class="list-cell">P${ticket.priority}</div>
-        <div class="list-cell muted">${ticket.isCompleted ? "Done" : ctx.escapeHtml(lane?.name || "Open")}</div>
+        <div class="list-cell muted">${ticket.isArchived ? "Archived" : ticket.isCompleted ? "Done" : ctx.escapeHtml(lane?.name || "Open")}</div>
       </div>
     `;
   }
@@ -269,6 +271,19 @@ export function createBoardModule(ctx) {
     await ctx.sendJson(`/api/boards/${state.activeBoardId}/tickets/bulk-complete`, {
       method: "POST",
       body: { ticketIds, isCompleted },
+    });
+    state.selectedListTicketIds = [];
+    await ctx.refreshBoardDetail();
+  }
+
+  async function updateSelectedListArchive(isArchived) {
+    const ticketIds = [...state.selectedListTicketIds];
+    if (ticketIds.length === 0) {
+      return;
+    }
+    await ctx.sendJson(`/api/boards/${state.activeBoardId}/tickets/bulk-archive`, {
+      method: "POST",
+      body: { ticketIds, isArchived },
     });
     state.selectedListTicketIds = [];
     await ctx.refreshBoardDetail();
@@ -337,7 +352,7 @@ export function createBoardModule(ctx) {
 
   function createTicketCard(ticket) {
     const card = document.createElement("article");
-    card.className = `ticket-card ${ticket.isCompleted ? "completed" : ""}`;
+    card.className = `ticket-card ${ticket.isCompleted ? "completed" : ""} ${ticket.isArchived ? "archived" : ""}`;
     card.draggable = true;
     card.dataset.ticketId = String(ticket.id);
     card.innerHTML = `
@@ -719,6 +734,10 @@ export function createBoardModule(ctx) {
     }
     const bulkButton = event.target.closest(".list-action-button");
     if (bulkButton && elements.listBoard.contains(bulkButton) && !bulkButton.disabled) {
+      if (bulkButton.dataset.bulkArchive) {
+        updateSelectedListArchive(bulkButton.dataset.bulkArchive === "true");
+        return;
+      }
       updateSelectedListTickets(bulkButton.dataset.bulkComplete === "true");
     }
   }

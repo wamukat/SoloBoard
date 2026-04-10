@@ -1,5 +1,16 @@
 export function createEditorModule(ctx) {
   const { state, elements } = ctx;
+  let saveStateTimer = null;
+
+  function setDetailTab(tab) {
+    const showComments = tab !== "activity";
+    elements.commentsTabButton.classList.toggle("active", showComments);
+    elements.commentsTabButton.setAttribute("aria-selected", String(showComments));
+    elements.activityTabButton.classList.toggle("active", !showComments);
+    elements.activityTabButton.setAttribute("aria-selected", String(!showComments));
+    elements.commentsSection.hidden = !showComments;
+    elements.activitySection.hidden = showComments;
+  }
 
   function getSelectedTagIds() {
     return [...state.editorTagIds];
@@ -489,6 +500,9 @@ export function createEditorModule(ctx) {
     elements.ticketView.hidden = mode !== "view";
     elements.editorForm.hidden = mode !== "edit";
     elements.headerEditButton.hidden = mode !== "view" || !state.editingTicketId;
+    elements.archiveTicketButton.hidden = mode !== "edit" || !state.editingTicketId;
+    elements.commentsTabButton.hidden = mode !== "view";
+    elements.activityTabButton.hidden = mode !== "view";
     if (mode !== "edit") {
       closeParentOptions();
       closeTicketTagOptions();
@@ -508,6 +522,7 @@ export function createEditorModule(ctx) {
     state.parentQuery = "";
     state.blockerQuery = "";
     state.childQuery = "";
+    setDetailTab("comments");
   }
 
   function handleEditorDialogClose() {
@@ -567,8 +582,30 @@ export function createEditorModule(ctx) {
       .map(
         (comment) => `
           <article class="comment-item">
-            <div class="comment-meta muted">#${comment.id} ${new Date(comment.createdAt).toLocaleString()}</div>
+            <div class="comment-meta muted">
+              <span>#${comment.id} ${new Date(comment.createdAt).toLocaleString()}</span>
+              <span class="comment-actions">
+                <button type="button" class="ghost icon-button" data-edit-comment-id="${comment.id}" title="Edit comment">✎</button>
+                <button type="button" class="ghost icon-button danger" data-delete-comment-id="${comment.id}" title="Delete comment">×</button>
+              </span>
+            </div>
             <div class="markdown">${comment.bodyHtml}</div>
+          </article>
+        `,
+      )
+      .join("");
+  }
+
+  function renderActivity(activity) {
+    if (!activity.length) {
+      return '<p class="muted">No activity yet.</p>';
+    }
+    return activity
+      .map(
+        (entry) => `
+          <article class="activity-item">
+            <div class="activity-meta muted">${new Date(entry.createdAt).toLocaleString()}</div>
+            <div class="activity-message">${ctx.escapeHtml(entry.message)}</div>
           </article>
         `,
       )
@@ -580,11 +617,12 @@ export function createEditorModule(ctx) {
       return "";
     }
     const priority = `<span class="ticket-priority-label">Priority: ${ticket.priority}</span>`;
+    const archived = ticket.isArchived ? '<span class="ticket-archived-label">Archived</span>' : "";
     const tags = ticket.tags
       .map((tag) => `<span class="tag" style="background:${ctx.escapeHtml(tag.color)}">${ctx.escapeHtml(tag.name)}</span>`)
       .join("");
     return `
-      <div class="ticket-meta-row">${priority}${tags}</div>
+      <div class="ticket-meta-row">${archived}${priority}${tags}</div>
     `;
   }
 
@@ -594,6 +632,7 @@ export function createEditorModule(ctx) {
       elements.editorHeaderId.textContent = "";
       elements.editorTitle.textContent = "New Ticket";
       elements.headerEditButton.hidden = true;
+      elements.archiveTicketButton.hidden = true;
       return;
     }
     elements.editorHeaderState.hidden = false;
@@ -602,6 +641,8 @@ export function createEditorModule(ctx) {
     elements.editorHeaderId.textContent = `#${ticket.id}`;
     elements.editorTitle.textContent = ticket.title;
     elements.headerEditButton.hidden = state.dialogMode !== "view";
+    elements.archiveTicketButton.hidden = state.dialogMode !== "edit";
+    elements.archiveTicketButton.textContent = ticket.isArchived ? "Restore" : "Archive";
   }
 
   function syncTicketRelations(ticket) {
@@ -610,12 +651,13 @@ export function createEditorModule(ctx) {
     elements.ticketRelations.hidden = !relationsHtml;
   }
 
-  function hydrateDialogTicket(ticket) {
+  function hydrateDialogTicket(ticket, activity = []) {
     syncEditorHeader(ticket);
     elements.ticketViewMeta.innerHTML = renderTicketMeta(ticket);
     syncTicketRelations(ticket);
     elements.ticketViewBody.innerHTML = ticket.bodyHtml || '<p class="muted">No description</p>';
     elements.ticketComments.innerHTML = renderComments(ticket.comments ?? []);
+    elements.ticketActivity.innerHTML = renderActivity(activity);
     elements.ticketTitle.value = ticket.title;
     elements.ticketPriority.value = String(ticket.priority ?? 0);
     elements.ticketCompleted.checked = ticket.isCompleted;
@@ -639,6 +681,19 @@ export function createEditorModule(ctx) {
     syncBlockerOptions();
     syncChildPickerAvailability();
     syncChildOptions();
+    setDetailTab("comments");
+  }
+
+  async function refreshDialogTicket(ticketId = state.editingTicketId) {
+    if (!ticketId) {
+      return null;
+    }
+    const [ticket, activityPayload] = await Promise.all([
+      ctx.api(`/api/tickets/${ticketId}`),
+      ctx.api(`/api/tickets/${ticketId}/activity`).catch(() => ({ activity: [] })),
+    ]);
+    hydrateDialogTicket(ticket, activityPayload.activity ?? []);
+    return ticket;
   }
 
   async function openEditor(ticketId = null, mode = "edit", defaultLaneId = null) {
@@ -647,6 +702,7 @@ export function createEditorModule(ctx) {
     }
     state.editingTicketId = ticketId;
     const ticket = ticketId ? await ctx.api(`/api/tickets/${ticketId}`) : null;
+    const activity = ticketId ? ((await ctx.api(`/api/tickets/${ticketId}/activity`).catch(() => ({ activity: [] }))).activity ?? []) : [];
     elements.ticketTitle.value = ticket?.title ?? "";
     elements.ticketPriority.value = String(ticket?.priority ?? 0);
     elements.ticketCompleted.checked = ticket?.isCompleted ?? false;
@@ -656,6 +712,7 @@ export function createEditorModule(ctx) {
     syncTicketRelations(ticket);
     elements.ticketViewBody.innerHTML = ticket?.bodyHtml ?? '<p class="muted">No description</p>';
     elements.ticketComments.innerHTML = renderComments(ticket?.comments ?? []);
+    elements.ticketActivity.innerHTML = renderActivity(activity);
     elements.commentBody.value = "";
     const selectedLaneId = ticket?.laneId ?? defaultLaneId;
     elements.ticketLane.innerHTML = state.boardDetail.lanes
@@ -665,6 +722,7 @@ export function createEditorModule(ctx) {
     elements.deleteTicketButton.hidden = !ticketId;
     elements.commentForm.hidden = !ticketId;
     elements.ticketCompletedRow.hidden = !ticketId;
+    elements.archiveTicketButton.hidden = !ticketId;
     if (!ticketId && defaultLaneId != null) {
       elements.ticketLane.value = String(defaultLaneId);
     }
@@ -681,13 +739,16 @@ export function createEditorModule(ctx) {
     elements.ticketBlockerSearch.value = "";
     elements.ticketChildSearch.value = "";
     elements.ticketChildrenRow.hidden = !ticketId;
+    clearSaveState();
     syncParentOptions();
     syncTicketTagOptions();
     syncBlockerOptions();
     syncChildPickerAvailability();
     syncChildOptions();
     setDialogMode(ticketId ? mode : "edit");
+    setDetailTab("comments");
     elements.editorDialog.showModal();
+    ctx.ensureEditorDialogPosition?.();
     if (ticketId) {
       ctx.syncTicketUrl(ticketId);
     }
@@ -716,47 +777,167 @@ export function createEditorModule(ctx) {
       : `/api/boards/${state.activeBoardId}/tickets`;
     const method = state.editingTicketId ? "PATCH" : "POST";
     const editingTicketId = state.editingTicketId;
-    if (editingTicketId && nextParentTicketId != null && state.editorOriginalChildIds.length > 0) {
-      for (const childId of state.editorOriginalChildIds) {
-        await ctx.sendJson(`/api/tickets/${childId}`, {
-          method: "PATCH",
-          body: { parentTicketId: null },
-        });
-      }
-    }
-    await ctx.api(endpoint, {
-      method,
-      body: JSON.stringify(payload),
-    });
-    if (editingTicketId) {
-      if (nextParentTicketId == null) {
-        const originalChildIds = new Set(state.editorOriginalChildIds);
-        const nextChildIds = new Set(state.editorChildIds);
+    try {
+      if (editingTicketId && nextParentTicketId != null && state.editorOriginalChildIds.length > 0) {
         for (const childId of state.editorOriginalChildIds) {
-          if (!nextChildIds.has(childId)) {
-            await ctx.sendJson(`/api/tickets/${childId}`, {
-              method: "PATCH",
-              body: { parentTicketId: null },
-            });
-          }
-        }
-        for (const childId of state.editorChildIds) {
-          if (!originalChildIds.has(childId)) {
-            await ctx.sendJson(`/api/tickets/${childId}`, {
-              method: "PATCH",
-              body: { parentTicketId: editingTicketId },
-            });
-          }
+          await ctx.sendJson(`/api/tickets/${childId}`, {
+            method: "PATCH",
+            body: { parentTicketId: null },
+          });
         }
       }
-      const updated = await ctx.api(`/api/tickets/${editingTicketId}`);
-      hydrateDialogTicket(updated);
-      state.editorOriginalChildIds = [...state.editorChildIds];
-      setDialogMode("view");
-    } else {
-      closeEditor();
+      setSaveState("saving", "Saving...");
+      const savedTicket = await ctx.api(endpoint, {
+        method,
+        body: JSON.stringify(payload),
+      });
+      if (editingTicketId) {
+        if (nextParentTicketId == null) {
+          const originalChildIds = new Set(state.editorOriginalChildIds);
+          const nextChildIds = new Set(state.editorChildIds);
+          for (const childId of state.editorOriginalChildIds) {
+            if (!nextChildIds.has(childId)) {
+              await ctx.sendJson(`/api/tickets/${childId}`, {
+                method: "PATCH",
+                body: { parentTicketId: null },
+              });
+            }
+          }
+          for (const childId of state.editorChildIds) {
+            if (!originalChildIds.has(childId)) {
+              await ctx.sendJson(`/api/tickets/${childId}`, {
+                method: "PATCH",
+                body: { parentTicketId: editingTicketId },
+              });
+            }
+          }
+        }
+        await refreshDialogTicket(editingTicketId);
+        state.editorOriginalChildIds = [...state.editorChildIds];
+        setDialogMode("view");
+        setSaveState("saved", "Saved");
+      } else {
+        closeEditor();
+        showToast("Saved");
+      }
+      await ctx.refreshBoardDetail();
+      return savedTicket;
+    } catch (error) {
+      setSaveState("error", "Save failed");
+      showToast(error.message, "error");
+      return null;
     }
-    await ctx.refreshBoardDetail();
+  }
+
+  async function toggleTicketArchive() {
+    if (!state.editingTicketId) {
+      return;
+    }
+    try {
+      const current = await ctx.api(`/api/tickets/${state.editingTicketId}`);
+      setSaveState("saving", current.isArchived ? "Restoring..." : "Archiving...");
+      await ctx.sendJson(`/api/tickets/${state.editingTicketId}`, {
+        method: "PATCH",
+        body: { isArchived: !current.isArchived },
+      });
+      await ctx.refreshBoardDetail();
+      if (!current.isArchived && state.filters.archived !== "all") {
+        closeEditor();
+        showToast("Archived");
+        return;
+      }
+      await refreshDialogTicket(state.editingTicketId);
+      setSaveState("saved", current.isArchived ? "Restored" : "Archived");
+    } catch (error) {
+      setSaveState("error", "Save failed");
+      showToast(error.message, "error");
+    }
+  }
+
+  async function handleCommentAction(event) {
+    const editButton = event.target.closest("[data-edit-comment-id]");
+    if (editButton) {
+      const commentId = Number(editButton.dataset.editCommentId);
+      try {
+        const ticket = await ctx.api(`/api/tickets/${state.editingTicketId}`);
+        const current = (ticket.comments ?? []).find((comment) => comment.id === commentId);
+        if (!current) {
+          throw new Error("Comment not found");
+        }
+        const values = await requestFields({
+          title: "Edit Comment",
+          submitLabel: "Save",
+          fields: [
+            { id: "bodyMarkdown", label: "Comment", type: "textarea", rows: 8, value: current.bodyMarkdown, required: true },
+          ],
+        });
+        if (!values) {
+          return;
+        }
+        setSaveState("saving", "Saving...");
+        await ctx.sendJson(`/api/comments/${commentId}`, {
+          method: "PATCH",
+          body: { bodyMarkdown: values.bodyMarkdown },
+        });
+        await refreshDialogTicket();
+        await ctx.refreshBoardDetail();
+        setSaveState("saved", "Saved");
+      } catch (error) {
+        setSaveState("error", "Save failed");
+        showToast(error.message, "error");
+      }
+      return;
+    }
+
+    const deleteButton = event.target.closest("[data-delete-comment-id]");
+    if (!deleteButton) {
+      return;
+    }
+    const commentId = Number(deleteButton.dataset.deleteCommentId);
+    await confirmAndRun({
+      title: "Delete Comment",
+      message: "Delete this comment?",
+      submitLabel: "Delete",
+      run: async () => {
+        try {
+          setSaveState("saving", "Deleting...");
+          await ctx.api(`/api/comments/${commentId}`, { method: "DELETE" });
+          await refreshDialogTicket();
+          await ctx.refreshBoardDetail();
+          setSaveState("saved", "Deleted");
+        } catch (error) {
+          setSaveState("error", "Delete failed");
+          throw error;
+        }
+      },
+    });
+  }
+
+  function clearSaveState() {
+    if (saveStateTimer) {
+      window.clearTimeout(saveStateTimer);
+      saveStateTimer = null;
+    }
+    elements.editorSaveState.hidden = true;
+    elements.editorSaveState.textContent = "";
+    elements.editorSaveState.dataset.kind = "";
+  }
+
+  function setSaveState(kind, message) {
+    if (saveStateTimer) {
+      window.clearTimeout(saveStateTimer);
+      saveStateTimer = null;
+    }
+    elements.editorSaveState.hidden = false;
+    elements.editorSaveState.dataset.kind = kind;
+    elements.editorSaveState.textContent = message;
+    if (kind === "saved") {
+      saveStateTimer = window.setTimeout(() => {
+        if (elements.editorSaveState.dataset.kind === "saved") {
+          clearSaveState();
+        }
+      }, 1400);
+    }
   }
 
   async function deleteTicket() {
@@ -793,11 +974,12 @@ export function createEditorModule(ctx) {
         body: { bodyMarkdown },
       });
       const ticket = await ctx.api(`/api/tickets/${state.editingTicketId}`);
-      hydrateDialogTicket(ticket);
+      await refreshDialogTicket(ticket.id);
       elements.commentBody.value = "";
       await ctx.refreshBoardDetail();
-      showToast("Comment added");
+      setSaveState("saved", "Comment saved");
     } catch (error) {
+      setSaveState("error", "Save failed");
       showToast(error.message, "error");
     } finally {
       elements.saveCommentButton.disabled = false;
@@ -886,22 +1068,36 @@ export function createEditorModule(ctx) {
       elements.uxError.textContent = "";
       elements.uxFields.innerHTML = fields
         .map(
-          (field) => `
-            <label>
-              ${ctx.escapeHtml(field.label)}
-              <input
-                data-field-id="${ctx.escapeHtml(field.id)}"
-                type="${ctx.escapeHtml(field.type ?? "text")}"
-                value="${ctx.escapeHtml(field.value ?? "")}"
-                ${field.required ? "required" : ""}
-              />
-            </label>
-          `,
+          (field) => {
+            if (field.type === "textarea") {
+              return `
+                <label>
+                  ${ctx.escapeHtml(field.label)}
+                  <textarea
+                    data-field-id="${ctx.escapeHtml(field.id)}"
+                    rows="${ctx.escapeHtml(field.rows ?? 6)}"
+                    ${field.required ? "required" : ""}
+                  >${ctx.escapeHtml(field.value ?? "")}</textarea>
+                </label>
+              `;
+            }
+            return `
+              <label>
+                ${ctx.escapeHtml(field.label)}
+                <input
+                  data-field-id="${ctx.escapeHtml(field.id)}"
+                  type="${ctx.escapeHtml(field.type ?? "text")}"
+                  value="${ctx.escapeHtml(field.value ?? "")}"
+                  ${field.required ? "required" : ""}
+                />
+              </label>
+            `;
+          },
         )
         .join("");
 
       elements.uxDialog.showModal();
-      const firstInput = elements.uxFields.querySelector("input");
+      const firstInput = elements.uxFields.querySelector("input, textarea");
       firstInput?.focus();
     });
   }
@@ -962,6 +1158,7 @@ export function createEditorModule(ctx) {
     createTagFromEditor,
     deleteTicket,
     finishUxDialog,
+    handleCommentAction,
     handleBlockerFieldClick,
     handleBlockerSearchInput,
     handleBlockerSearchKeydown,
@@ -987,8 +1184,10 @@ export function createEditorModule(ctx) {
     requestFields,
     requestFieldsAction,
     saveTicket,
+    setDetailTab,
     setDialogMode,
     showToast,
     syncTicketTagOptions,
+    toggleTicketArchive,
   };
 }

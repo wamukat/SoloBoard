@@ -29,6 +29,7 @@ export type TicketRow = {
   title: string;
   body_markdown: string;
   is_completed: number;
+  is_archived: number;
   priority: number;
   position: number;
   created_at: string;
@@ -49,6 +50,17 @@ export type CommentRow = {
   id: Id;
   ticket_id: Id;
   body_markdown: string;
+  created_at: string;
+};
+
+export type ActivityLogRow = {
+  id: Id;
+  board_id: Id;
+  ticket_id: Id | null;
+  subject_ticket_id: Id;
+  action: string;
+  message: string;
+  details_json: string;
   created_at: string;
 };
 
@@ -95,6 +107,7 @@ export type TicketView = {
   bodyMarkdown: string;
   bodyHtml: string;
   isCompleted: boolean;
+  isArchived: boolean;
   priority: number;
   position: number;
   createdAt: string;
@@ -116,6 +129,7 @@ export type TicketSummaryView = {
   parentTicketId: Id | null;
   title: string;
   isCompleted: boolean;
+  isArchived: boolean;
   priority: number;
   position: number;
   createdAt: string;
@@ -131,6 +145,17 @@ export type CommentView = {
   ticketId: Id;
   bodyMarkdown: string;
   bodyHtml: string;
+  createdAt: string;
+};
+
+export type ActivityLogView = {
+  id: Id;
+  boardId: Id;
+  ticketId: Id | null;
+  subjectTicketId: Id;
+  action: string;
+  message: string;
+  details: Record<string, unknown>;
   createdAt: string;
 };
 

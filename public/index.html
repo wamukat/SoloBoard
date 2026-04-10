@@ -60,6 +60,7 @@
             <select id="lane-filter" hidden>
               <option value="">All lanes</option>
             </select>
+            <button id="archived-filter-button" type="button" class="ghost">Archived</button>
             <div id="completed-filter" class="filter-toggle" role="group" aria-label="Completion filter">
               <button type="button" data-value="" class="active">All</button>
               <button type="button" data-value="false">Open</button>
@@ -92,8 +93,11 @@
               <span id="editor-header-id" class="muted"></span>
             </div>
             <h3 id="editor-title" class="editor-dialog-title">New Ticket</h3>
+            <div id="editor-save-state" class="editor-save-state" hidden>Saved</div>
           </div>
-          <button id="header-edit-button" type="button" class="ghost icon-button dialog-close-button" aria-label="Edit ticket" title="Edit" hidden>✎</button>
+          <div class="editor-header-actions">
+            <button id="header-edit-button" type="button" class="ghost icon-button dialog-close-button" aria-label="Edit ticket" title="Edit" hidden>✎</button>
+          </div>
         </div>
 
         <section id="ticket-view" class="ticket-view" hidden>
@@ -101,8 +105,16 @@
           <div id="ticket-view-body" class="markdown ticket-view-body"></div>
           <div id="ticket-relations" class="ticket-relations"></div>
 
-          <section class="comments-section">
-            <div class="preview-head">Comments</div>
+          <div id="ticket-view-tabs" class="detail-tabs" role="tablist" aria-label="Ticket details">
+            <button type="button" id="comments-tab-button" class="detail-tab active" role="tab" aria-selected="true">Comments</button>
+            <button type="button" id="activity-tab-button" class="detail-tab" role="tab" aria-selected="false">Activity</button>
+          </div>
+
+          <section id="activity-section" class="activity-section" hidden>
+            <div id="ticket-activity" class="activity-list"></div>
+          </section>
+
+          <section id="comments-section" class="comments-section">
             <div id="ticket-comments" class="comments-list"></div>
             <form id="comment-form" class="comment-form">
                <label>
@@ -142,6 +154,8 @@
               <input id="ticket-completed" name="isCompleted" type="checkbox" />
               Completed
             </label>
+
+            <button id="archive-ticket-button" type="button" class="ghost archive-ticket-button" hidden>Archive</button>
           </div>
 
           <div class="editor-field">

@@ -14,6 +14,7 @@
    `GET /api/tickets/:ticketId`
 4. コメントや relation を個別取得したい場合は専用 endpoint を使う。
    `GET /api/tickets/:ticketId/comments`
+   `GET /api/tickets/:ticketId/activity`
    `GET /api/tickets/:ticketId/relations`
 5. 更新は最小差分で `PATCH /api/tickets/:ticketId` を使う。
    lane 名ベース遷移は `PATCH /api/tickets/:ticketId/transition` を使う。
@@ -47,13 +48,20 @@
 - タグはボードごとに独立しています。
 - チケット更新時は `tagIds` に、そのボード内のタグ ID を指定してください。
 
-### 5. コメントは一覧取得と追記ができる
+### 5. コメントは一覧取得・追記・編集・削除ができる
 
 - `GET /api/tickets/:ticketId/comments` で一覧取得できます。
 - `POST /api/tickets/:ticketId/comments` で追記できます。
-- 編集・削除 API はありません。
+- `PATCH /api/comments/:commentId` で編集できます。
+- `DELETE /api/comments/:commentId` で削除できます。
 
-### 6. canonical ref が返る
+### 6. archive は完了状態と独立
+
+- `isArchived` は `isCompleted` と独立です。
+- archived ticket は board 一覧からは通常隠れます。
+- 一覧に含めたいときは `GET /api/boards/:boardId/tickets?archived=all` を使います。
+
+### 7. canonical ref が返る
 
 - ticket 系レスポンスには `ref` と `shortRef` が含まれます。
 - 形式は `BoardName#TicketId` と `#TicketId` です。
@@ -71,6 +79,7 @@
 - `lane_id`
 - `tag`
 - `completed`
+- `archived`
 - `q`
 
 ### チケットをレーン移動したい
@@ -107,6 +116,11 @@ ID ベース:
 - `parent`, `children`, `blockers`, `blockedBy` が返る
 - `blockers` は「このチケットを block している相手」
 - `blockedBy` は「このチケットに block されている相手」
+
+### activity を取得したい
+
+- `GET /api/tickets/:ticketId/activity`
+- comment 追加/更新/削除、ticket 更新、transition、archive などの履歴が返る
 
 ### チケットを完了にしたい
 

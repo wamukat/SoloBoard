@@ -387,6 +387,11 @@ paths:
           in: query
           schema:
             type: boolean
+        - name: archived
+          in: query
+          schema:
+            type: string
+            enum: ["true", "false", "all"]
         - name: q
           in: query
           schema:
@@ -709,6 +714,74 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
+  /api/comments/{commentId}:
+    patch:
+      summary: Update comment
+      operationId: updateComment
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bodyMarkdown:
+                  type: string
+              required: [bodyMarkdown]
+      responses:
+        "200":
+          description: Updated comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete comment
+      operationId: deleteComment
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/tickets/{ticketId}/activity:
+    get:
+      summary: List ticket activity
+      operationId: listTicketActivity
+      parameters:
+        - $ref: "#/components/parameters/TicketId"
+      responses:
+        "200":
+          description: Activity list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activity:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ActivityLog"
+                required: [activity]
+        "404":
+          $ref: "#/components/responses/Error"
+
 components:
   parameters:
     BoardId:
@@ -780,6 +853,23 @@ components:
         bodyHtml: { type: string }
         createdAt: { type: string, format: date-time }
       required: [id, ticketId, bodyMarkdown, bodyHtml, createdAt]
+    ActivityLog:
+      type: object
+      properties:
+        id: { type: integer }
+        boardId: { type: integer }
+        ticketId:
+          oneOf:
+            - type: integer
+            - type: "null"
+        subjectTicketId: { type: integer }
+        action: { type: string }
+        message: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+      required: [id, boardId, ticketId, subjectTicketId, action, message, details, createdAt]
     TicketRelation:
       type: object
       properties:
@@ -823,6 +913,7 @@ components:
         bodyMarkdown: { type: string }
         bodyHtml: { type: string }
         isCompleted: { type: boolean }
+        isArchived: { type: boolean }
         priority: { type: integer }
         position: { type: integer }
         createdAt: { type: string, format: date-time }
@@ -854,7 +945,7 @@ components:
         ref: { type: string }
         shortRef: { type: string }
       required:
-        [id, boardId, laneId, parentTicketId, title, bodyMarkdown, bodyHtml, isCompleted, priority, position, createdAt, updatedAt, tags, comments, blockerIds, blockers, parent, children, ref, shortRef]
+        [id, boardId, laneId, parentTicketId, title, bodyMarkdown, bodyHtml, isCompleted, isArchived, priority, position, createdAt, updatedAt, tags, comments, blockerIds, blockers, parent, children, ref, shortRef]
     TicketSummary:
       type: object
       properties:
@@ -865,6 +956,7 @@ components:
           type: [integer, "null"]
         title: { type: string }
         isCompleted: { type: boolean }
+        isArchived: { type: boolean }
         priority: { type: integer }
         position: { type: integer }
         createdAt: { type: string, format: date-time }
@@ -880,7 +972,7 @@ components:
         ref: { type: string }
         shortRef: { type: string }
       required:
-        [id, boardId, laneId, parentTicketId, title, isCompleted, priority, position, createdAt, updatedAt, tags, blockerIds, ref, shortRef]
+        [id, boardId, laneId, parentTicketId, title, isCompleted, isArchived, priority, position, createdAt, updatedAt, tags, blockerIds, ref, shortRef]
     TicketUpsert:
       type: object
       properties:
@@ -890,6 +982,7 @@ components:
         title: { type: string }
         bodyMarkdown: { type: string }
         isCompleted: { type: boolean }
+        isArchived: { type: boolean }
         priority: { type: integer }
         tagIds:
           type: array

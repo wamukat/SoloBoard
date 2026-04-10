@@ -18,6 +18,7 @@ const state = {
     lane: "",
     completed: "",
     tag: "",
+    archived: "",
   },
   editingTicketId: null,
   activeLaneDragId: null,
@@ -34,6 +35,8 @@ const state = {
   parentQuery: "",
   blockerQuery: "",
   childQuery: "",
+  editorDialogPosition: null,
+  editorDialogDrag: null,
 };
 
 const elements = {
@@ -54,6 +57,7 @@ const elements = {
   newBoardButton: document.querySelector("#new-board-button"),
   searchInput: document.querySelector("#search-input"),
   laneFilter: document.querySelector("#lane-filter"),
+  archivedFilterButton: document.querySelector("#archived-filter-button"),
   viewModeButtons: [...document.querySelectorAll("#view-mode-toggle button")],
   completedFilter: document.querySelector("#completed-filter"),
   completedFilterButtons: [...document.querySelectorAll("#completed-filter button")],
@@ -61,8 +65,11 @@ const elements = {
   exportBoardButton: document.querySelector("#export-board-button"),
   importBoardInput: document.querySelector("#import-board-input"),
   editorDialog: document.querySelector("#editor-dialog"),
+  editorHeader: document.querySelector(".editor-header"),
   editorHeaderState: document.querySelector("#editor-header-state"),
   editorHeaderId: document.querySelector("#editor-header-id"),
+  editorSaveState: document.querySelector("#editor-save-state"),
+  archiveTicketButton: document.querySelector("#archive-ticket-button"),
   headerEditButton: document.querySelector("#header-edit-button"),
   ticketView: document.querySelector("#ticket-view"),
   editorForm: document.querySelector("#editor-form"),
@@ -70,7 +77,12 @@ const elements = {
   ticketViewMeta: document.querySelector("#ticket-view-meta"),
   ticketRelations: document.querySelector("#ticket-relations"),
   ticketViewBody: document.querySelector("#ticket-view-body"),
+  commentsTabButton: document.querySelector("#comments-tab-button"),
+  activityTabButton: document.querySelector("#activity-tab-button"),
+  commentsSection: document.querySelector("#comments-section"),
+  activitySection: document.querySelector("#activity-section"),
   ticketComments: document.querySelector("#ticket-comments"),
+  ticketActivity: document.querySelector("#ticket-activity"),
   commentForm: document.querySelector("#comment-form"),
   commentBody: document.querySelector("#comment-body"),
   saveCommentButton: document.querySelector("#save-comment-button"),
@@ -118,6 +130,7 @@ async function main() {
   bindEvents();
   syncSidebar();
   syncCompletedFilter("");
+  syncArchivedFilter();
   syncViewMode();
   await refreshBoards();
   await applyRouteFromLocation({ replace: true });
@@ -184,6 +197,11 @@ function bindEvents() {
     state.filters.lane = event.target.value;
     await refreshBoardDetail();
   });
+  elements.archivedFilterButton.addEventListener("click", async () => {
+    state.filters.archived = state.filters.archived === "all" ? "" : "all";
+    syncArchivedFilter();
+    await refreshBoardDetail();
+  });
   elements.completedFilterButtons.forEach((button) => {
     button.addEventListener("click", async () => {
       state.filters.completed = button.dataset.value ?? "";
@@ -198,9 +216,14 @@ function bindEvents() {
   elements.editorForm.addEventListener("submit", saveTicket);
   elements.commentForm.addEventListener("submit", addComment);
   elements.saveCommentButton.addEventListener("click", addComment);
+  elements.ticketComments.addEventListener("click", handleCommentAction);
+  elements.commentsTabButton.addEventListener("click", () => setDetailTab("comments"));
+  elements.activityTabButton.addEventListener("click", () => setDetailTab("activity"));
+  elements.editorHeader.addEventListener("pointerdown", handleEditorHeaderPointerDown);
   elements.uxForm.addEventListener("submit", handleUxSubmit);
   elements.uxDangerButton.addEventListener("click", handleUxDanger);
   elements.deleteTicketButton.addEventListener("click", deleteTicket);
+  elements.archiveTicketButton.addEventListener("click", toggleTicketArchive);
   elements.headerEditButton.addEventListener("click", () => setDialogMode("edit"));
   elements.cancelEditButton.addEventListener("click", () => {
     if (state.editingTicketId) {
@@ -224,7 +247,80 @@ function bindEvents() {
       showToast(error.message, "error");
     });
   });
+  window.addEventListener("pointermove", handleEditorHeaderPointerMove);
+  window.addEventListener("pointerup", handleEditorHeaderPointerUp);
   document.addEventListener("click", handleDocumentClick);
+}
+
+function clampEditorDialogPosition(left, top) {
+  const rect = elements.editorDialog.getBoundingClientRect();
+  const maxLeft = Math.max(12, window.innerWidth - rect.width - 12);
+  const maxTop = Math.max(12, window.innerHeight - rect.height - 12);
+  return {
+    left: Math.min(Math.max(12, left), maxLeft),
+    top: Math.min(Math.max(12, top), maxTop),
+  };
+}
+
+function applyEditorDialogPosition(position) {
+  if (!position) {
+    return;
+  }
+  const clamped = clampEditorDialogPosition(position.left, position.top);
+  state.editorDialogPosition = clamped;
+  elements.editorDialog.style.left = `${clamped.left}px`;
+  elements.editorDialog.style.top = `${clamped.top}px`;
+}
+
+function ensureEditorDialogPosition() {
+  if (state.editorDialogPosition) {
+    applyEditorDialogPosition(state.editorDialogPosition);
+    return;
+  }
+  const rect = elements.editorDialog.getBoundingClientRect();
+  applyEditorDialogPosition({
+    left: Math.max(12, (window.innerWidth - rect.width) / 2),
+    top: 48,
+  });
+}
+
+function handleEditorHeaderPointerDown(event) {
+  if (!elements.editorDialog.open) {
+    return;
+  }
+  if (event.button !== 0 || event.target.closest("button")) {
+    return;
+  }
+  const rect = elements.editorDialog.getBoundingClientRect();
+  state.editorDialogDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    left: rect.left,
+    top: rect.top,
+  };
+  elements.editorDialog.classList.add("dragging");
+  event.preventDefault();
+}
+
+function handleEditorHeaderPointerMove(event) {
+  const drag = state.editorDialogDrag;
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return;
+  }
+  applyEditorDialogPosition({
+    left: drag.left + (event.clientX - drag.startX),
+    top: drag.top + (event.clientY - drag.startY),
+  });
+}
+
+function handleEditorHeaderPointerUp(event) {
+  const drag = state.editorDialogDrag;
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return;
+  }
+  state.editorDialogDrag = null;
+  elements.editorDialog.classList.remove("dragging");
 }
 
 function handleDialogBackdropClick(event) {
@@ -259,10 +355,11 @@ async function refreshBoards() {
 }
 
 function resetBoardFilters() {
-  state.filters = { q: "", lane: "", completed: "", tag: "" };
+  state.filters = { q: "", lane: "", completed: "", tag: "", archived: "" };
   elements.searchInput.value = "";
   elements.laneFilter.value = "";
   syncCompletedFilter("");
+  syncArchivedFilter();
   elements.tagFilter.value = "";
 }
 
@@ -281,20 +378,35 @@ async function refreshBoardDetail() {
     renderBoardDetail();
     return;
   }
-  const ticketListUrl = `/api/boards/${state.activeBoardId}/tickets`;
+  const buildTicketListUrl = (filters = {}) => {
+    const params = new URLSearchParams();
+    const archived = filters.archived ?? state.filters.archived;
+    if (archived === "all") {
+      params.set("archived", "all");
+    }
+    if (filters.lane ?? state.filters.lane) {
+      params.set("lane_id", String(filters.lane ?? state.filters.lane));
+    }
+    if (filters.completed ?? state.filters.completed) {
+      params.set("completed", String(filters.completed ?? state.filters.completed));
+    }
+    if (filters.tag ?? state.filters.tag) {
+      params.set("tag", String(filters.tag ?? state.filters.tag));
+    }
+    if (filters.q ?? state.filters.q) {
+      params.set("q", String(filters.q ?? state.filters.q));
+    }
+    const query = params.toString();
+    return `/api/boards/${state.activeBoardId}/tickets${query ? `?${query}` : ""}`;
+  };
+  const ticketListUrl = buildTicketListUrl();
   const [detail, allTickets] = await Promise.all([
     api(`/api/boards/${state.activeBoardId}`),
     api(ticketListUrl),
   ]);
-  const hasFilters = Object.values(state.filters).some((value) => value !== "");
+  const hasFilters = Object.entries(state.filters).some(([key, value]) => key !== "archived" && value !== "");
   const tickets = hasFilters
-    ? await api(
-        `${ticketListUrl}?${new URLSearchParams(
-          Object.entries(state.filters)
-            .filter(([, value]) => value !== "")
-            .map(([key, value]) => [key === "lane" ? "lane_id" : key, value]),
-        ).toString()}`,
-      )
+    ? await api(buildTicketListUrl())
     : allTickets;
   state.boardTickets = allTickets.tickets;
   state.boardDetail = {
@@ -497,6 +609,7 @@ const editorModule = createEditorModule({
   state,
   elements,
   api,
+  ensureEditorDialogPosition,
   escapeHtml,
   refreshBoardDetail,
   sendJson,
@@ -506,6 +619,7 @@ const editorModule = createEditorModule({
 
 const {
   addComment,
+  handleCommentAction,
   closeEditor,
   confirmAndRun,
   createTagFromEditor,
@@ -536,9 +650,11 @@ const {
   requestFields,
   requestFieldsAction,
   saveTicket,
+  setDetailTab,
   setDialogMode,
   showToast,
   syncTicketTagOptions,
+  toggleTicketArchive,
 } = editorModule;
 
 const boardModule = createBoardModule({
@@ -589,4 +705,8 @@ function syncCompletedFilter(value = state.filters.completed) {
   elements.completedFilterButtons.forEach((button) => {
     button.classList.toggle("active", (button.dataset.value ?? "") === value);
   });
+}
+
+function syncArchivedFilter() {
+  elements.archivedFilterButton.classList.toggle("active", state.filters.archived === "all");
 }

@@ -18,6 +18,7 @@ type TicketMutationBody = {
   title?: string;
   bodyMarkdown?: string;
   isCompleted?: boolean;
+  isArchived?: boolean;
   priority?: number;
   tagIds?: number[];
   blockerIds?: number[];
@@ -102,6 +103,22 @@ const commentViewSchema = {
   },
 } as const;
 
+const activityLogViewSchema = {
+  type: "object",
+  required: ["id", "boardId", "ticketId", "subjectTicketId", "action", "message", "details", "createdAt"],
+  additionalProperties: false,
+  properties: {
+    id: positiveIntegerSchema,
+    boardId: positiveIntegerSchema,
+    ticketId: { anyOf: [positiveIntegerSchema, { type: "null" }] },
+    subjectTicketId: positiveIntegerSchema,
+    action: { type: "string" },
+    message: { type: "string" },
+    details: { type: "object", additionalProperties: true },
+    createdAt: { type: "string" },
+  },
+} as const;
+
 const boardsResponseSchema = {
   type: "object",
   required: ["boards"],
@@ -167,6 +184,18 @@ const commentsResponseSchema = {
   },
 } as const;
 
+const activityLogsResponseSchema = {
+  type: "object",
+  required: ["activity"],
+  additionalProperties: false,
+  properties: {
+    activity: {
+      type: "array",
+      items: activityLogViewSchema,
+    },
+  },
+} as const;
+
 const ticketSummarySchema = {
   type: "object",
   additionalProperties: false,
@@ -177,6 +206,7 @@ const ticketSummarySchema = {
     "parentTicketId",
     "title",
     "isCompleted",
+    "isArchived",
     "priority",
     "position",
     "createdAt",
@@ -193,6 +223,7 @@ const ticketSummarySchema = {
     parentTicketId: { anyOf: [positiveIntegerSchema, { type: "null" }] },
     title: { type: "string" },
     isCompleted: { type: "boolean" },
+    isArchived: { type: "boolean" },
     priority: { type: "number" },
     position: { type: "integer", minimum: 0 },
     createdAt: { type: "string" },
@@ -304,6 +335,7 @@ const ticketMutationBodySchema = {
     title: { type: "string", minLength: 1 },
     bodyMarkdown: { type: "string" },
     isCompleted: { type: "boolean" },
+    isArchived: { type: "boolean" },
     priority: { type: "number" },
     tagIds: optionalPositiveIntegerArraySchema,
     blockerIds: optionalPositiveIntegerArraySchema,
@@ -339,6 +371,15 @@ const ticketCommentBodySchema = {
   },
 } as const;
 
+const ticketCommentUpdateBodySchema = {
+  type: "object",
+  required: ["bodyMarkdown"],
+  additionalProperties: false,
+  properties: {
+    bodyMarkdown: { type: "string", minLength: 1 },
+  },
+} as const;
+
 const ticketListQuerySchema = {
   type: "object",
   additionalProperties: false,
@@ -346,6 +387,7 @@ const ticketListQuerySchema = {
     lane_id: positiveIntegerSchema,
     tag: { type: "string" },
     completed: { type: "string", enum: ["true", "false"] },
+    archived: { type: "string", enum: ["true", "false", "all"] },
     q: { type: "string" },
   },
 } as const;
@@ -389,6 +431,16 @@ const bulkTransitionTicketsBodySchema = {
     ticketIds: optionalPositiveIntegerArraySchema,
     laneName: { type: "string", minLength: 1 },
     isCompleted: { type: "boolean" },
+  },
+} as const;
+
+const bulkArchiveTicketsBodySchema = {
+  type: "object",
+  required: ["ticketIds", "isArchived"],
+  additionalProperties: false,
+  properties: {
+    ticketIds: optionalPositiveIntegerArraySchema,
+    isArchived: { type: "boolean" },
   },
 } as const;
 
@@ -810,6 +862,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       lane_id?: string;
       tag?: string;
       completed?: string;
+      archived?: string;
       q?: string;
     };
     return {
@@ -818,6 +871,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         tag: query.tag?.trim() || undefined,
         completed:
           query.completed === "true" ? true : query.completed === "false" ? false : undefined,
+        archived:
+          query.archived === "true" ? true : query.archived === "false" ? false : undefined,
+        includeArchived: query.archived === "all",
         q: query.q?.trim() || undefined,
       }),
     };
@@ -853,6 +909,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           title: body.title.trim(),
           bodyMarkdown: body.bodyMarkdown ?? "",
           isCompleted: Boolean(body.isCompleted),
+          isArchived: Boolean(body.isArchived),
           priority: typeof body.priority === "number" ? body.priority : 0,
           tagIds: Array.isArray(body.tagIds) ? body.tagIds : [],
           blockerIds: Array.isArray(body.blockerIds) ? body.blockerIds : [],
@@ -936,6 +993,39 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
+  app.post("/api/boards/:boardId/tickets/bulk-archive", {
+    schema: {
+      params: idParamsSchema("boardId"),
+      body: bulkArchiveTicketsBodySchema,
+      response: {
+        200: ticketsResponseSchema,
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const boardId = getIdParam(request.params, "boardId");
+    const body = request.body as { ticketIds?: number[]; isArchived?: boolean };
+    if (!db.getBoard(boardId)) {
+      return reply.code(404).send({ error: "board not found" });
+    }
+    if (!Array.isArray(body.ticketIds) || body.ticketIds.length === 0) {
+      return reply.code(400).send({ error: "ticketids is required" });
+    }
+    try {
+      const tickets = db.bulkArchiveTickets({
+        boardId,
+        ticketIds: body.ticketIds,
+        isArchived: Boolean(body.isArchived),
+      });
+      publishBoardEvent(boardId);
+      return { tickets };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "bulk archive failed";
+      return reply.code(400).send({ error: message.toLowerCase() });
+    }
+  });
+
   app.get("/api/tickets/:ticketId", {
     schema: {
       params: idParamsSchema("ticketId"),
@@ -966,6 +1056,22 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   }, async (request, reply) => {
     try {
       return { comments: db.listComments(getIdParam(request.params, "ticketId")) };
+    } catch {
+      return reply.code(404).send({ error: "ticket not found" });
+    }
+  });
+
+  app.get("/api/tickets/:ticketId/activity", {
+    schema: {
+      params: idParamsSchema("ticketId"),
+      response: {
+        200: activityLogsResponseSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      return { activity: db.listActivity(getIdParam(request.params, "ticketId")) };
     } catch {
       return reply.code(404).send({ error: "ticket not found" });
     }
@@ -1021,6 +1127,57 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
+  app.patch("/api/comments/:commentId", {
+    schema: {
+      params: idParamsSchema("commentId"),
+      body: ticketCommentUpdateBodySchema,
+      response: {
+        200: commentViewSchema,
+        400: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const body = request.body as { bodyMarkdown?: string };
+    const bodyMarkdown = body?.bodyMarkdown?.trim();
+    if (!bodyMarkdown) {
+      return reply.code(400).send({ error: "bodymarkdown is required" });
+    }
+    try {
+      const comment = db.updateComment({
+        commentId: getIdParam(request.params, "commentId"),
+        bodyMarkdown,
+      });
+      const ticket = db.getTicket(comment.ticketId);
+      if (ticket) {
+        publishBoardEvent(ticket.boardId);
+      }
+      return comment;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "comment update failed";
+      const code = message === "Comment not found" ? 404 : 400;
+      return reply.code(code).send({ error: message.toLowerCase() });
+    }
+  });
+
+  app.delete("/api/comments/:commentId", {
+    schema: {
+      params: idParamsSchema("commentId"),
+      response: {
+        204: { type: "null" },
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      const deleted = db.deleteComment(getIdParam(request.params, "commentId"));
+      publishBoardEvent(deleted.boardId);
+      return reply.code(204).send();
+    } catch {
+      return reply.code(404).send({ error: "comment not found" });
+    }
+  });
+
   app.patch("/api/tickets/:ticketId", {
     schema: {
       params: idParamsSchema("ticketId"),
@@ -1043,6 +1200,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         title: body.title?.trim(),
         bodyMarkdown: body.bodyMarkdown,
         isCompleted: body.isCompleted,
+        isArchived: body.isArchived,
         priority: typeof body.priority === "number" ? body.priority : undefined,
         tagIds: Array.isArray(body.tagIds) ? body.tagIds : undefined,
         blockerIds: Array.isArray(body.blockerIds) ? body.blockerIds : undefined,
@@ -1234,6 +1392,7 @@ function parseTicketMutationBody(body: TicketMutationBody): TicketMutationBody {
     title: typeof body?.title === "string" ? body.title.trim() : undefined,
     bodyMarkdown: body?.bodyMarkdown,
     isCompleted: body?.isCompleted,
+    isArchived: body?.isArchived,
     priority: typeof body?.priority === "number" ? body.priority : undefined,
     tagIds: Array.isArray(body?.tagIds) ? body.tagIds : undefined,
     blockerIds: Array.isArray(body?.blockerIds) ? body.blockerIds : undefined,

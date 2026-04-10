@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { buildApp } from "../src/app.js";
+import { KanbanDb } from "../src/db.js";
 
 function createDbFile(): string {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), "soloboard-test-")), "test.sqlite");
@@ -132,12 +133,22 @@ test("board lifecycle, ticket filters, reorder, and export/import", async () => 
     url: `/api/boards/${boardId}/tickets/reorder`,
     payload: {
       items: [
-        { ticketId: secondTicket.id, laneId: todoLane.id, position: 0 },
-        { ticketId: firstTicket.id, laneId: doingLane.id, position: 0 },
+        { ticketId: secondTicket.id, laneId: doingLane.id, position: 0 },
+        { ticketId: firstTicket.id, laneId: todoLane.id, position: 0 },
       ],
     },
   });
   assert.equal(reorderResponse.statusCode, 200);
+
+  const reorderedActivityResponse = await app.inject({
+    method: "GET",
+    url: `/api/tickets/${firstTicket.id}/activity`,
+  });
+  assert.equal(reorderedActivityResponse.statusCode, 200);
+  assert.ok(
+    reorderedActivityResponse.json().activity.some((entry: { action: string; message: string }) =>
+      entry.action === "ticket_transitioned" && entry.message === "Moved to todo"),
+  );
 
   const exportResponse = await app.inject({
     method: "GET",
@@ -248,6 +259,53 @@ test("comment list, relations, transition, and canonical refs", async () => {
     ["First comment", "Second comment"],
   );
 
+  const firstCommentId = commentsResponse.json().comments[0].id;
+  const updateCommentResponse = await app.inject({
+    method: "PATCH",
+    url: `/api/comments/${firstCommentId}`,
+    payload: { bodyMarkdown: "First comment updated" },
+  });
+  assert.equal(updateCommentResponse.statusCode, 200);
+  assert.equal(updateCommentResponse.json().bodyMarkdown, "First comment updated");
+
+  const activityResponse = await app.inject({
+    method: "GET",
+    url: `/api/tickets/${parent.id}/activity`,
+  });
+  assert.equal(activityResponse.statusCode, 200);
+  const updatedCommentActivity = activityResponse.json().activity.find((entry: {
+    action: string;
+    details: { oldBodyMarkdown?: string; newBodyMarkdown?: string };
+  }) => entry.action === "comment_updated");
+  assert.ok(updatedCommentActivity);
+  assert.equal(updatedCommentActivity.details.oldBodyMarkdown, "First comment");
+  assert.equal(updatedCommentActivity.details.newBodyMarkdown, "First comment updated");
+
+  const deleteCommentResponse = await app.inject({
+    method: "DELETE",
+    url: `/api/comments/${firstCommentId}`,
+  });
+  assert.equal(deleteCommentResponse.statusCode, 204);
+
+  const commentsAfterDeleteResponse = await app.inject({
+    method: "GET",
+    url: `/api/tickets/${parent.id}/comments`,
+  });
+  assert.equal(commentsAfterDeleteResponse.statusCode, 200);
+  assert.equal(commentsAfterDeleteResponse.json().comments.length, 1);
+
+  const deleteActivityResponse = await app.inject({
+    method: "GET",
+    url: `/api/tickets/${parent.id}/activity`,
+  });
+  assert.equal(deleteActivityResponse.statusCode, 200);
+  const deletedCommentActivity = deleteActivityResponse.json().activity.find((entry: {
+    action: string;
+    details: { deletedBodyMarkdown?: string };
+  }) => entry.action === "comment_deleted");
+  assert.ok(deletedCommentActivity);
+  assert.equal(deletedCommentActivity.details.deletedBodyMarkdown, "First comment updated");
+
   const relationsResponse = await app.inject({
     method: "GET",
     url: `/api/tickets/${parent.id}/relations`,
@@ -282,6 +340,34 @@ test("comment list, relations, transition, and canonical refs", async () => {
   assert.equal(transitionResponse.json().isCompleted, true);
   assert.equal(transitionResponse.json().ref, `Portal#${parent.id}`);
 
+  const archiveResponse = await app.inject({
+    method: "PATCH",
+    url: `/api/tickets/${parent.id}`,
+    payload: { isArchived: true },
+  });
+  assert.equal(archiveResponse.statusCode, 200);
+  assert.equal(archiveResponse.json().isArchived, true);
+
+  const hiddenArchivedSummary = await app.inject({
+    method: "GET",
+    url: `/api/boards/${board.board.id}/tickets`,
+  });
+  assert.equal(hiddenArchivedSummary.statusCode, 200);
+  assert.equal(
+    hiddenArchivedSummary.json().tickets.some((ticket: { id: number }) => ticket.id === parent.id),
+    false,
+  );
+
+  const includedArchivedSummary = await app.inject({
+    method: "GET",
+    url: `/api/boards/${board.board.id}/tickets?archived=all`,
+  });
+  assert.equal(includedArchivedSummary.statusCode, 200);
+  assert.equal(
+    includedArchivedSummary.json().tickets.some((ticket: { id: number; isArchived: boolean }) => ticket.id === parent.id && ticket.isArchived === true),
+    true,
+  );
+
   const missingComments = await app.inject({
     method: "GET",
     url: "/api/tickets/99999/comments",
@@ -293,6 +379,12 @@ test("comment list, relations, transition, and canonical refs", async () => {
     url: "/api/tickets/99999/relations",
   });
   assert.equal(missingRelations.statusCode, 404);
+
+  const missingActivity = await app.inject({
+    method: "GET",
+    url: "/api/tickets/99999/activity",
+  });
+  assert.equal(missingActivity.statusCode, 404);
 
   const invalidTransition = await app.inject({
     method: "PATCH",
@@ -316,6 +408,95 @@ test("comment list, relations, transition, and canonical refs", async () => {
   assert.equal(schemaRejectedTicketCreate.statusCode, 400);
 
   await app.close();
+});
+
+test("ticket delete activity is retained after ticket removal", () => {
+  const db = new KanbanDb(createDbFile());
+  const board = db.createBoard({ name: "Delete Log Board", laneNames: ["todo"] });
+  const laneId = board.lanes[0].id;
+  const ticket = db.createTicket({
+    boardId: board.board.id,
+    laneId,
+    title: "Delete me",
+  });
+
+  db.deleteTicket(ticket.id);
+
+  const rows = db.sqlite
+    .prepare("SELECT ticket_id, subject_ticket_id, action, message FROM activity_logs WHERE subject_ticket_id = ? AND action = ?")
+    .all(ticket.id, "ticket_deleted") as Array<{ ticket_id: number | null; subject_ticket_id: number; action: string; message: string }>;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].ticket_id, null);
+  assert.equal(rows[0].subject_ticket_id, ticket.id);
+  assert.equal(rows[0].action, "ticket_deleted");
+  assert.equal(rows[0].message, "Ticket deleted");
+
+  db.close();
+});
+
+test("deleted ticket activity remains available through the API", async () => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+  });
+
+  const board = (await app.inject({
+    method: "POST",
+    url: "/api/boards",
+    payload: { name: "Deleted Activity Board", laneNames: ["todo"] },
+  })).json();
+  const laneId = board.lanes[0].id;
+  const ticket = (await app.inject({
+    method: "POST",
+    url: `/api/boards/${board.board.id}/tickets`,
+    payload: { laneId, title: "Delete me through API" },
+  })).json();
+
+  const deleteResponse = await app.inject({
+    method: "DELETE",
+    url: `/api/tickets/${ticket.id}`,
+  });
+  assert.equal(deleteResponse.statusCode, 204);
+
+  const activityResponse = await app.inject({
+    method: "GET",
+    url: `/api/tickets/${ticket.id}/activity`,
+  });
+  assert.equal(activityResponse.statusCode, 200);
+  assert.equal(activityResponse.json().activity[0].action, "ticket_deleted");
+  assert.equal(activityResponse.json().activity[0].ticketId, null);
+  assert.equal(activityResponse.json().activity[0].subjectTicketId, ticket.id);
+
+  await app.close();
+});
+
+test("reordering visible tickets preserves stable archived positions on restore", () => {
+  const db = new KanbanDb(createDbFile());
+  const board = db.createBoard({ name: "Archive Order Board", laneNames: ["todo"] });
+  const laneId = board.lanes[0].id;
+  const first = db.createTicket({ boardId: board.board.id, laneId, title: "First" });
+  const second = db.createTicket({ boardId: board.board.id, laneId, title: "Second" });
+  const third = db.createTicket({ boardId: board.board.id, laneId, title: "Third" });
+
+  db.updateTicket(second.id, { isArchived: true });
+  db.reorderTickets(board.board.id, [
+    { ticketId: third.id, laneId, position: 0 },
+    { ticketId: first.id, laneId, position: 1 },
+  ]);
+
+  db.updateTicket(second.id, { isArchived: false });
+
+  const restored = db.listTickets(board.board.id, { includeArchived: true });
+  assert.deepEqual(
+    restored.map((ticket) => ({ id: ticket.id, position: ticket.position })),
+    [
+      { id: third.id, position: 0 },
+      { id: first.id, position: 1 },
+      { id: second.id, position: 2 },
+    ],
+  );
+
+  db.close();
 });
 
 test("bulk complete and bulk transition operate on board ticket sets", async () => {
@@ -372,6 +553,29 @@ test("bulk complete and bulk transition operate on board ticket sets", async () 
   });
   assert.equal(detailOne.json().laneId, doneLane.id);
   assert.equal(detailOne.json().isCompleted, true);
+
+  const bulkArchive = await app.inject({
+    method: "POST",
+    url: `/api/boards/${board.board.id}/tickets/bulk-archive`,
+    payload: { ticketIds: [first.id, second.id], isArchived: true },
+  });
+  assert.equal(bulkArchive.statusCode, 200);
+  assert.ok(bulkArchive.json().tickets.every((ticket: { isArchived: boolean }) => ticket.isArchived === true));
+
+  const hiddenArchived = await app.inject({
+    method: "GET",
+    url: `/api/boards/${board.board.id}/tickets`,
+  });
+  assert.equal(hiddenArchived.statusCode, 200);
+  assert.equal(hiddenArchived.json().tickets.length, 0);
+
+  const bulkRestore = await app.inject({
+    method: "POST",
+    url: `/api/boards/${board.board.id}/tickets/bulk-archive`,
+    payload: { ticketIds: [first.id, second.id], isArchived: false },
+  });
+  assert.equal(bulkRestore.statusCode, 200);
+  assert.ok(bulkRestore.json().tickets.every((ticket: { isArchived: boolean }) => ticket.isArchived === false));
 
   const missingLaneTransition = await app.inject({
     method: "POST",

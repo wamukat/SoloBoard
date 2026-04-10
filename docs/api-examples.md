@@ -132,12 +132,39 @@ curl -s -X POST http://127.0.0.1:3000/api/tickets/6/comments \
   }'
 ```
 
+## Edit Comment
+
+```bash
+curl -s -X PATCH http://127.0.0.1:3000/api/comments/12 \
+  -H 'content-type: application/json' \
+  --data '{
+    "bodyMarkdown": "Confirmed on local UI, API, and archive flow."
+  }'
+```
+
+## Delete Comment
+
+```bash
+curl -s -X DELETE http://127.0.0.1:3000/api/comments/12
+```
+
+## Archive Ticket
+
+```bash
+curl -s -X PATCH http://127.0.0.1:3000/api/tickets/6 \
+  -H 'content-type: application/json' \
+  --data '{
+    "isArchived": true
+  }'
+```
+
 ## Filter Ticket Summaries
 
 ```bash
 curl -s 'http://127.0.0.1:3000/api/boards/3/tickets?completed=false'
 curl -s 'http://127.0.0.1:3000/api/boards/3/tickets?lane_id=11'
 curl -s 'http://127.0.0.1:3000/api/boards/3/tickets?tag=frontend'
+curl -s 'http://127.0.0.1:3000/api/boards/3/tickets?archived=all'
 curl -s 'http://127.0.0.1:3000/api/boards/3/tickets?q=sidebar'
 ```
 
@@ -200,6 +227,12 @@ data: {"boardId":3,"event":"board_updated","sentAt":"2026-04-10T00:00:00.000Z"}
 
 ```bash
 curl -s http://127.0.0.1:3000/api/tickets/6/comments
+```
+
+## List Activity
+
+```bash
+curl -s http://127.0.0.1:3000/api/tickets/6/activity
 ```
 
 ## Get Relations

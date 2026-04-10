@@ -54,6 +54,12 @@ button:hover,
   background: transparent;
 }
 
+.ghost.active {
+  background: rgba(31, 111, 95, 0.08);
+  border-color: rgba(31, 111, 95, 0.22);
+  color: var(--accent);
+}
+
 .danger {
   color: var(--danger);
 }
@@ -96,6 +102,12 @@ button:hover,
 .editor-header,
 .editor-actions {
   justify-content: space-between;
+}
+
+.editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .board-title-row {
@@ -913,7 +925,10 @@ button:hover,
 }
 
 .editor-dialog {
+  position: fixed;
+  margin: 0;
   width: min(720px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
   border: 1px solid rgba(104, 99, 85, 0.16);
   border-radius: 10px;
   padding: 0;
@@ -931,6 +946,8 @@ button:hover,
   padding: 0.85rem;
   background: var(--panel);
   border-radius: 10px;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
 }
 
 .ux-form {
@@ -984,6 +1001,19 @@ button:hover,
   gap: 0.75rem;
 }
 
+.editor-header {
+  cursor: move;
+  user-select: none;
+}
+
+.editor-header button {
+  cursor: pointer;
+}
+
+.editor-dialog.dragging {
+  box-shadow: 0 16px 34px rgba(38, 35, 28, 0.16);
+}
+
 .ticket-view-meta,
 .editor-actions-right {
   display: flex;
@@ -996,6 +1026,23 @@ button:hover,
   display: grid;
   gap: 0.2rem;
   min-width: 0;
+}
+
+.editor-save-state {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.editor-save-state[data-kind="saving"] {
+  color: var(--accent);
+}
+
+.editor-save-state[data-kind="saved"] {
+  color: var(--accent);
+}
+
+.editor-save-state[data-kind="error"] {
+  color: var(--danger);
 }
 
 .editor-dialog-heading-top {
@@ -1030,6 +1077,17 @@ button:hover,
   padding: 0.18rem 0.05rem;
   color: var(--muted);
   font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.ticket-archived-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.48rem;
+  border-radius: 999px;
+  background: rgba(104, 99, 85, 0.1);
+  color: var(--muted);
+  font-size: 0.78rem;
   font-weight: 600;
 }
 
@@ -1087,7 +1145,8 @@ button:hover,
 }
 
 .ticket-view-body,
-.comments-list {
+.comments-list,
+.activity-list {
   padding: 0.7rem;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1098,10 +1157,71 @@ button:hover,
   line-height: 1.45;
 }
 
+.comments-section,
+.activity-section {
+  min-height: 320px;
+  max-height: 320px;
+  overflow: auto;
+  align-content: start;
+}
+
+.detail-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid rgba(104, 99, 85, 0.16);
+}
+
+.detail-tab {
+  padding: 0.2rem 0 0.55rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.detail-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.detail-tab:hover {
+  color: var(--text);
+}
+
 .comment-item + .comment-item {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid rgba(104, 99, 85, 0.2);
+}
+
+.activity-item + .activity-item {
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(104, 99, 85, 0.18);
+}
+
+.comment-meta,
+.activity-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.comment-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.activity-message {
+  line-height: 1.4;
 }
 
 .status-pill {
@@ -1137,6 +1257,11 @@ button:hover,
   border-color: rgba(104, 99, 85, 0.18);
 }
 
+.ticket-card.archived,
+.list-row.archived {
+  opacity: 0.74;
+}
+
 .editor-form label.checkbox {
   display: flex;
   gap: 0.75rem;
@@ -1145,9 +1270,9 @@ button:hover,
 
 .editor-inline-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 0.9fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 0.9fr) auto;
   gap: 0.7rem;
-  align-items: end;
+  align-items: center;
 }
 
 .editor-inline-row > label {
@@ -1163,7 +1288,18 @@ button:hover,
 .editor-inline-row .checkbox {
   min-height: 2.75rem;
   justify-content: flex-start;
-  padding-bottom: 0.45rem;
+}
+
+.archive-ticket-button {
+  align-self: center;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.archive-ticket-button:hover {
+  color: var(--text);
 }
 
 .preview-head {
@@ -1172,14 +1308,21 @@ button:hover,
 }
 
 .editor-form label,
-.comment-form label {
+.comment-form label,
+.ux-fields label {
   display: grid;
   gap: 0.3rem;
 }
 
 .editor-form textarea,
-.comment-form textarea {
+.comment-form textarea,
+.ux-fields textarea {
   line-height: 1.45;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.92);
+  padding: 0.65rem 0.8rem;
 }
 
 .editor-actions {

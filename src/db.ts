@@ -1,6 +1,8 @@
 import Database from "better-sqlite3";
 
 import {
+  type ActivityLogRow,
+  type ActivityLogView,
   type BoardDetailView,
   type BoardShellView,
   type BoardExport,
@@ -27,6 +29,8 @@ type ListTicketsFilters = {
   tag?: string;
   completed?: boolean;
   q?: string;
+  archived?: boolean;
+  includeArchived?: boolean;
 };
 
 type CreateBoardInput = {
@@ -51,6 +55,7 @@ type CreateTicketInput = {
   title: string;
   bodyMarkdown?: string;
   isCompleted?: boolean;
+  isArchived?: boolean;
   priority?: number;
   parentTicketId?: Id | null;
   tagIds?: Id[];
@@ -63,6 +68,11 @@ type UpdateTicketInput = Partial<CreateTicketInput> & {
 
 type CreateCommentInput = {
   ticketId: Id;
+  bodyMarkdown: string;
+};
+
+type UpdateCommentInput = {
+  commentId: Id;
   bodyMarkdown: string;
 };
 
@@ -83,6 +93,12 @@ type BulkTransitionTicketsInput = {
   ticketIds: Id[];
   laneName: string;
   isCompleted?: boolean;
+};
+
+type BulkArchiveTicketsInput = {
+  boardId: Id;
+  ticketIds: Id[];
+  isArchived: boolean;
 };
 
 type TicketRelationRow = {
@@ -149,6 +165,7 @@ export class KanbanDb {
         title TEXT NOT NULL,
         body_markdown TEXT NOT NULL DEFAULT '',
         is_completed INTEGER NOT NULL DEFAULT 0,
+        is_archived INTEGER NOT NULL DEFAULT 0,
         priority INTEGER NOT NULL DEFAULT 0,
         position INTEGER NOT NULL,
         created_at TEXT NOT NULL,
@@ -159,6 +176,17 @@ export class KanbanDb {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
         body_markdown TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS activity_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+        ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL,
+        subject_ticket_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        message TEXT NOT NULL,
+        details_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL
       );
 
@@ -191,6 +219,9 @@ export class KanbanDb {
 
       CREATE INDEX IF NOT EXISTS ticket_blockers_blocker_ticket_idx
       ON ticket_blockers(blocker_ticket_id, ticket_id);
+
+      CREATE INDEX IF NOT EXISTS activity_logs_ticket_created_idx
+      ON activity_logs(ticket_id, created_at, id);
     `);
 
     const ticketColumns = this.sqlite.prepare("PRAGMA table_info(tickets)").all() as Array<{ name: string }>;
@@ -200,6 +231,55 @@ export class KanbanDb {
     if (!ticketColumns.some((column) => column.name === "parent_ticket_id")) {
       this.sqlite.exec("ALTER TABLE tickets ADD COLUMN parent_ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL");
     }
+    if (!ticketColumns.some((column) => column.name === "is_archived")) {
+      this.sqlite.exec("ALTER TABLE tickets ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0");
+    }
+
+    const activityColumns = this.sqlite.prepare("PRAGMA table_info(activity_logs)").all() as Array<{
+      name: string;
+      notnull: number;
+    }>;
+    const activityFks = this.sqlite.prepare("PRAGMA foreign_key_list(activity_logs)").all() as Array<{
+      from: string;
+      on_delete: string;
+    }>;
+    const ticketActivityFk = activityFks.find((fk) => fk.from === "ticket_id");
+    const shouldRebuildActivityLogs = !activityColumns.some((column) => column.name === "subject_ticket_id")
+      || !activityColumns.some((column) => column.name === "details_json")
+      || activityColumns.find((column) => column.name === "ticket_id")?.notnull === 1
+      || ticketActivityFk?.on_delete?.toUpperCase() !== "SET NULL";
+    if (shouldRebuildActivityLogs) {
+      this.sqlite.exec(`
+        ALTER TABLE activity_logs RENAME TO activity_logs_old;
+
+        CREATE TABLE activity_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+          ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL,
+          subject_ticket_id INTEGER NOT NULL,
+          action TEXT NOT NULL,
+          message TEXT NOT NULL,
+          details_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL
+        );
+
+        INSERT INTO activity_logs (id, board_id, ticket_id, subject_ticket_id, action, message, details_json, created_at)
+        SELECT id, board_id, ticket_id, ticket_id, action, message, '{}', created_at
+        FROM activity_logs_old;
+
+        DROP TABLE activity_logs_old;
+
+        CREATE INDEX IF NOT EXISTS activity_logs_ticket_created_idx
+        ON activity_logs(ticket_id, created_at, id);
+      `);
+    }
+    this.sqlite.exec(`
+      CREATE INDEX IF NOT EXISTS activity_logs_ticket_created_idx
+      ON activity_logs(ticket_id, created_at, id);
+
+      CREATE INDEX IF NOT EXISTS activity_logs_subject_ticket_created_idx
+      ON activity_logs(subject_ticket_id, created_at, id);
+    `);
   }
 
   now(): string {
@@ -255,7 +335,7 @@ export class KanbanDb {
     const shell = this.getBoardShell(boardId);
     return {
       ...shell,
-      tickets: this.listTickets(boardId),
+      tickets: this.listTickets(boardId, { includeArchived: true }),
     };
   }
 
@@ -438,9 +518,9 @@ export class KanbanDb {
         .prepare(
           `
           INSERT INTO tickets (
-            board_id, lane_id, parent_ticket_id, title, body_markdown, is_completed, priority, position, created_at, updated_at
+            board_id, lane_id, parent_ticket_id, title, body_markdown, is_completed, is_archived, priority, position, created_at, updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -450,6 +530,7 @@ export class KanbanDb {
           input.title,
           input.bodyMarkdown ?? "",
           input.isCompleted ? 1 : 0,
+          input.isArchived ? 1 : 0,
           sanitizePriority(input.priority),
           position,
           now,
@@ -458,6 +539,7 @@ export class KanbanDb {
       const ticketId = Number(result.lastInsertRowid);
       this.replaceTicketTags(ticketId, input.tagIds ?? []);
       this.replaceTicketBlockers(ticketId, input.blockerIds ?? [], input.boardId);
+      this.addActivity(input.boardId, ticketId, "ticket_created", "Ticket created");
       this.touchBoard(input.boardId);
       return ticketId;
     });
@@ -476,7 +558,7 @@ export class KanbanDb {
         .prepare(
           `
           UPDATE tickets
-          SET board_id = ?, lane_id = ?, parent_ticket_id = ?, title = ?, body_markdown = ?, is_completed = ?, priority = ?, updated_at = ?
+          SET board_id = ?, lane_id = ?, parent_ticket_id = ?, title = ?, body_markdown = ?, is_completed = ?, is_archived = ?, priority = ?, updated_at = ?
           WHERE id = ?
           `,
         )
@@ -487,6 +569,7 @@ export class KanbanDb {
           input.title ?? current.title,
           input.bodyMarkdown ?? current.bodyMarkdown,
           typeof input.isCompleted === "boolean" ? Number(input.isCompleted) : Number(current.isCompleted),
+          typeof input.isArchived === "boolean" ? Number(input.isArchived) : Number(current.isArchived),
           input.priority == null ? current.priority : sanitizePriority(input.priority),
           this.now(),
           ticketId,
@@ -501,8 +584,32 @@ export class KanbanDb {
         this.sqlite
           .prepare("UPDATE tickets SET position = ? WHERE id = ?")
           .run(this.nextTicketPosition(nextLaneId), ticketId);
-        this.normalizeTicketPositions(current.laneId);
+        this.normalizeVisibleAndArchivedTicketPositions(current.laneId);
+        this.normalizeVisibleAndArchivedTicketPositions(nextLaneId);
+      } else if (typeof input.isArchived === "boolean" && input.isArchived !== current.isArchived) {
+        this.sqlite
+          .prepare("UPDATE tickets SET position = ? WHERE id = ?")
+          .run(this.nextTicketPosition(nextLaneId), ticketId);
+        this.normalizeVisibleAndArchivedTicketPositions(nextLaneId);
       }
+      const nextArchived = typeof input.isArchived === "boolean" ? input.isArchived : current.isArchived;
+      const nextCompleted = typeof input.isCompleted === "boolean" ? input.isCompleted : current.isCompleted;
+      const nextTitle = input.title ?? current.title;
+      const message = nextArchived !== current.isArchived
+        ? (nextArchived ? "Ticket archived" : "Ticket restored")
+        : input.laneId != null && input.laneId !== current.laneId
+          ? "Ticket moved"
+          : typeof input.isCompleted === "boolean" && nextCompleted !== current.isCompleted
+            ? (nextCompleted ? "Ticket marked completed" : "Ticket reopened")
+            : nextTitle !== current.title
+              ? "Ticket title updated"
+              : "Ticket updated";
+      const action = nextArchived !== current.isArchived
+        ? (nextArchived ? "ticket_archived" : "ticket_restored")
+        : input.laneId != null && input.laneId !== current.laneId
+          ? "ticket_transitioned"
+          : "ticket_updated";
+      this.addActivity(nextBoardId, ticketId, action, message);
       this.touchBoard(nextBoardId);
     });
     tx();
@@ -514,10 +621,19 @@ export class KanbanDb {
     if (!ticket) {
       throw new Error("Ticket not found");
     }
-    this.sqlite.prepare("UPDATE tickets SET parent_ticket_id = NULL WHERE parent_ticket_id = ?").run(ticketId);
-    this.sqlite.prepare("DELETE FROM tickets WHERE id = ?").run(ticketId);
-    this.normalizeTicketPositions(ticket.laneId);
-    this.touchBoard(ticket.boardId);
+    const tx = this.sqlite.transaction(() => {
+      this.addActivity(ticket.boardId, ticketId, "ticket_deleted", "Ticket deleted", {
+        title: ticket.title,
+        laneId: ticket.laneId,
+        isCompleted: ticket.isCompleted,
+        isArchived: ticket.isArchived,
+      });
+      this.sqlite.prepare("UPDATE tickets SET parent_ticket_id = NULL WHERE parent_ticket_id = ?").run(ticketId);
+      this.sqlite.prepare("DELETE FROM tickets WHERE id = ?").run(ticketId);
+      this.normalizeVisibleAndArchivedTicketPositions(ticket.laneId);
+      this.touchBoard(ticket.boardId);
+    });
+    tx();
   }
 
   addComment(input: CreateCommentInput): CommentView {
@@ -529,6 +645,7 @@ export class KanbanDb {
     const result = this.sqlite
       .prepare("INSERT INTO comments (ticket_id, body_markdown, created_at) VALUES (?, ?, ?)")
       .run(input.ticketId, input.bodyMarkdown, now);
+    this.addActivity(boardId, input.ticketId, "comment_added", "Comment added");
     this.touchBoard(boardId);
     return mapComment({
       id: Number(result.lastInsertRowid),
@@ -543,6 +660,73 @@ export class KanbanDb {
       throw new Error("Ticket not found");
     }
     return this.getCommentsForTicketIds([ticketId]).get(ticketId) ?? [];
+  }
+
+  updateComment(input: UpdateCommentInput): CommentView {
+    const current = this.sqlite
+      .prepare(
+        `
+        SELECT c.*, t.board_id
+        FROM comments c
+        INNER JOIN tickets t ON t.id = c.ticket_id
+        WHERE c.id = ?
+        `,
+      )
+      .get(input.commentId) as (CommentRow & { board_id: Id }) | undefined;
+    if (!current) {
+      throw new Error("Comment not found");
+    }
+    this.sqlite
+      .prepare("UPDATE comments SET body_markdown = ? WHERE id = ?")
+      .run(input.bodyMarkdown, input.commentId);
+    this.addActivity(current.board_id, current.ticket_id, "comment_updated", "Comment updated", {
+      commentId: current.id,
+      oldBodyMarkdown: current.body_markdown,
+      newBodyMarkdown: input.bodyMarkdown,
+    });
+    this.touchBoard(current.board_id);
+    return mapComment({
+      id: current.id,
+      ticket_id: current.ticket_id,
+      body_markdown: input.bodyMarkdown,
+      created_at: current.created_at,
+    });
+  }
+
+  deleteComment(commentId: Id): { ticketId: Id; boardId: Id } {
+    const current = this.sqlite
+      .prepare(
+        `
+        SELECT c.id, c.ticket_id, c.body_markdown, t.board_id
+        FROM comments c
+        INNER JOIN tickets t ON t.id = c.ticket_id
+        WHERE c.id = ?
+        `,
+      )
+      .get(commentId) as { id: Id; ticket_id: Id; board_id: Id; body_markdown: string } | undefined;
+    if (!current) {
+      throw new Error("Comment not found");
+    }
+    this.sqlite.prepare("DELETE FROM comments WHERE id = ?").run(commentId);
+    this.addActivity(current.board_id, current.ticket_id, "comment_deleted", "Comment deleted", {
+      commentId: current.id,
+      deletedBodyMarkdown: current.body_markdown,
+    });
+    this.touchBoard(current.board_id);
+    return { ticketId: current.ticket_id, boardId: current.board_id };
+  }
+
+  listActivity(ticketId: Id): ActivityLogView[] {
+    const hasActivity = this.sqlite
+      .prepare("SELECT 1 FROM activity_logs WHERE subject_ticket_id = ? LIMIT 1")
+      .get(ticketId) != null;
+    if (!this.hasTicket(ticketId) && !hasActivity) {
+      throw new Error("Ticket not found");
+    }
+    const rows = this.sqlite
+      .prepare("SELECT * FROM activity_logs WHERE subject_ticket_id = ? ORDER BY created_at DESC, id DESC")
+      .all(ticketId) as ActivityLogRow[];
+    return rows.map(mapActivityLog);
   }
 
   getTicketRelations(ticketId: Id): TicketRelationsView {
@@ -560,13 +744,13 @@ export class KanbanDb {
   }
 
   transitionTicket(ticketId: Id, laneName: string, isCompleted?: boolean): TicketView {
-    const ticket = this.getTicket(ticketId);
-    if (!ticket) {
+    const current = this.getTicket(ticketId);
+    if (!current) {
       throw new Error("Ticket not found");
     }
     const lane = this.sqlite
       .prepare("SELECT * FROM lanes WHERE board_id = ? AND name = ?")
-      .get(ticket.boardId, laneName) as LaneRow | undefined;
+      .get(current.boardId, laneName) as LaneRow | undefined;
     if (!lane) {
       throw new Error("Lane not found");
     }
@@ -581,16 +765,37 @@ export class KanbanDb {
     if (tickets.length !== items.length || tickets.some((ticket) => !items.find((item) => item.ticketId === ticket.id))) {
       throw new Error("Ticket order does not match board tickets");
     }
-    const lanes = new Set(this.listLanes(boardId).map((lane) => lane.id));
+    const laneRows = this.listLanes(boardId);
+    const lanes = new Set(laneRows.map((lane) => lane.id));
+    const laneNameById = new Map(laneRows.map((lane) => [lane.id, lane.name]));
+    const currentRows = this.getTicketRowsForBoard(boardId, items.map((item) => item.ticketId));
+    const currentRowsById = new Map(currentRows.map((row) => [row.id, row]));
     const updateStmt = this.sqlite.prepare("UPDATE tickets SET lane_id = ?, position = ?, updated_at = ? WHERE id = ?");
     const tx = this.sqlite.transaction(() => {
       const now = this.now();
+      const affectedLaneIds = new Set<Id>();
+      currentRows.forEach((row) => affectedLaneIds.add(row.lane_id));
       items.forEach((item) => {
         if (!lanes.has(item.laneId)) {
           throw new Error("Lane does not belong to board");
         }
+        affectedLaneIds.add(item.laneId);
         updateStmt.run(item.laneId, item.position, now, item.ticketId);
+        const current = currentRowsById.get(item.ticketId);
+        if (current && current.lane_id !== item.laneId) {
+          this.addActivity(
+            boardId,
+            item.ticketId,
+            "ticket_transitioned",
+            `Moved to ${laneNameById.get(item.laneId) ?? "lane"}`,
+            {
+              fromLaneId: current.lane_id,
+              toLaneId: item.laneId,
+            },
+          );
+        }
       });
+      affectedLaneIds.forEach((laneId) => this.normalizeVisibleAndArchivedTicketPositions(laneId));
       this.touchBoard(boardId);
     });
     tx();
@@ -609,6 +814,14 @@ export class KanbanDb {
     const stmt = this.sqlite.prepare("UPDATE tickets SET is_completed = ?, updated_at = ? WHERE id = ?");
     const tx = this.sqlite.transaction(() => {
       rows.forEach((row) => stmt.run(input.isCompleted ? 1 : 0, now, row.id));
+      rows.forEach((row) =>
+        this.addActivity(
+          input.boardId,
+          row.id,
+          input.isCompleted ? "ticket_completed" : "ticket_reopened",
+          input.isCompleted ? "Ticket marked completed" : "Ticket reopened",
+        ),
+      );
       this.touchBoard(input.boardId);
     });
     tx();
@@ -647,13 +860,48 @@ export class KanbanDb {
         const nextCompleted = typeof input.isCompleted === "boolean" ? Number(input.isCompleted) : row.is_completed;
         if (row.lane_id === lane.id) {
           updateSameLaneStmt.run(nextCompleted, now, row.id);
+          this.addActivity(input.boardId, row.id, "ticket_transitioned", `Moved to ${input.laneName}`);
           continue;
         }
         updateStmt.run(lane.id, targetPosition, nextCompleted, now, row.id);
+        this.addActivity(input.boardId, row.id, "ticket_transitioned", `Moved to ${input.laneName}`);
         targetPosition += 1;
       }
       const sourceLaneIds = [...new Set(movingRows.map((row) => row.lane_id))];
-      sourceLaneIds.forEach((laneId) => this.normalizeTicketPositions(laneId));
+      sourceLaneIds.forEach((laneId) => this.normalizeVisibleAndArchivedTicketPositions(laneId));
+      this.normalizeVisibleAndArchivedTicketPositions(lane.id);
+      this.touchBoard(input.boardId);
+    });
+    tx();
+    return this.listTicketSummariesByIds(input.boardId, input.ticketIds);
+  }
+
+  bulkArchiveTickets(input: BulkArchiveTicketsInput): TicketSummaryView[] {
+    const rows = this.getTicketRowsForBoard(input.boardId, input.ticketIds);
+    if (rows.length !== input.ticketIds.length) {
+      throw new Error("Some tickets do not belong to board");
+    }
+    if (rows.length === 0) {
+      return [];
+    }
+    const now = this.now();
+    const updateStmt = this.sqlite.prepare(
+      "UPDATE tickets SET is_archived = ?, position = ?, updated_at = ? WHERE id = ?",
+    );
+    const tx = this.sqlite.transaction(() => {
+      const affectedLaneIds = new Set<Id>();
+      for (const row of rows) {
+        affectedLaneIds.add(row.lane_id);
+        const nextPosition = input.isArchived ? this.nextTicketPosition(row.lane_id) : row.position;
+        updateStmt.run(input.isArchived ? 1 : 0, nextPosition, now, row.id);
+        this.addActivity(
+          input.boardId,
+          row.id,
+          input.isArchived ? "ticket_archived" : "ticket_restored",
+          input.isArchived ? "Ticket archived" : "Ticket restored",
+        );
+      }
+      affectedLaneIds.forEach((laneId) => this.normalizeVisibleAndArchivedTicketPositions(laneId));
       this.touchBoard(input.boardId);
     });
     tx();
@@ -700,6 +948,7 @@ export class KanbanDb {
           title: ticket.title,
           bodyMarkdown: ticket.bodyMarkdown,
           isCompleted: ticket.isCompleted,
+          isArchived: ticket.isArchived,
           priority: ticket.priority,
           tagIds: ticket.tags
             .map((tag) => tagByName.get(tag.name))
@@ -782,6 +1031,11 @@ export class KanbanDb {
       sql += " AND t.is_completed = ?";
       params.push(filters.completed ? 1 : 0);
     }
+    if (filters.archived === true) {
+      sql += " AND t.is_archived = 1";
+    } else if (filters.archived === false || !filters.includeArchived) {
+      sql += " AND t.is_archived = 0";
+    }
     if (filters.q) {
       sql += " AND (t.title LIKE ? OR t.body_markdown LIKE ?)";
       params.push(`%${filters.q}%`, `%${filters.q}%`);
@@ -798,7 +1052,7 @@ export class KanbanDb {
       `;
       params.push(filters.tag);
     }
-    sql += " ORDER BY t.lane_id ASC, t.position ASC, t.id ASC";
+    sql += " ORDER BY t.lane_id ASC, t.is_archived ASC, t.position ASC, t.id ASC";
 
     return this.sqlite.prepare(sql).all(...params) as TicketRow[];
   }
@@ -849,6 +1103,14 @@ export class KanbanDb {
     rows.forEach((row, index) => stmt.run(index, row.id));
   }
 
+  private normalizeVisibleAndArchivedTicketPositions(laneId: Id): void {
+    const rows = this.sqlite
+      .prepare("SELECT id FROM tickets WHERE lane_id = ? ORDER BY is_archived ASC, position ASC, id ASC")
+      .all(laneId) as Array<{ id: Id }>;
+    const stmt = this.sqlite.prepare("UPDATE tickets SET position = ? WHERE id = ?");
+    rows.forEach((row, index) => stmt.run(index, row.id));
+  }
+
 
   private validateParentTicket(ticketId: Id | null, parentTicketId: Id | null | undefined, boardId: Id): Id | null {
     if (parentTicketId == null) {
@@ -875,6 +1137,23 @@ export class KanbanDb {
       }
     }
     return parentTicketId;
+  }
+
+  private addActivity(
+    boardId: Id,
+    ticketId: Id,
+    action: string,
+    message: string,
+    details: Record<string, unknown> = {},
+  ): void {
+    this.sqlite
+      .prepare(
+        `
+        INSERT INTO activity_logs (board_id, ticket_id, subject_ticket_id, action, message, details_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(boardId, ticketId, ticketId, action, message, JSON.stringify(details), this.now());
   }
 
   private replaceTicketTags(ticketId: Id, tagIds: Id[]): void {
@@ -1124,6 +1403,7 @@ function mapTicket(
     bodyMarkdown: row.body_markdown,
     bodyHtml: renderMarkdown(row.body_markdown),
     isCompleted: Boolean(row.is_completed),
+    isArchived: Boolean(row.is_archived),
     priority: row.priority,
     position: row.position,
     createdAt: row.created_at,
@@ -1152,6 +1432,7 @@ function mapTicketSummary(
     parentTicketId: row.parent_ticket_id,
     title: row.title,
     isCompleted: Boolean(row.is_completed),
+    isArchived: Boolean(row.is_archived),
     priority: row.priority,
     position: row.position,
     createdAt: row.created_at,
@@ -1169,6 +1450,28 @@ function mapComment(row: CommentRow): CommentView {
     ticketId: row.ticket_id,
     bodyMarkdown: row.body_markdown,
     bodyHtml: renderMarkdown(row.body_markdown),
+    createdAt: row.created_at,
+  };
+}
+
+function mapActivityLog(row: ActivityLogRow): ActivityLogView {
+  let details: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(row.details_json);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      details = parsed as Record<string, unknown>;
+    }
+  } catch {
+    details = {};
+  }
+  return {
+    id: row.id,
+    boardId: row.board_id,
+    ticketId: row.ticket_id,
+    subjectTicketId: row.subject_ticket_id,
+    action: row.action,
+    message: row.message,
+    details,
     createdAt: row.created_at,
   };
 }
