@@ -21,7 +21,7 @@ type TicketMutationBody = {
   isArchived?: boolean;
   priority?: number;
   tagIds?: number[];
-  blockerIds?: number[];
+  blockerIds?: number[] | null;
 };
 
 type TicketTransitionBody = {
@@ -196,6 +196,113 @@ const activityLogsResponseSchema = {
   },
 } as const;
 
+const ticketRelationSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "title", "laneId", "isCompleted", "priority", "ref", "shortRef"],
+  properties: {
+    id: positiveIntegerSchema,
+    title: { type: "string" },
+    laneId: positiveIntegerSchema,
+    isCompleted: { type: "boolean" },
+    priority: { type: "number" },
+    ref: { type: "string" },
+    shortRef: { type: "string" },
+  },
+} as const;
+
+const ticketRelationsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["parent", "children", "blockers", "blockedBy"],
+  properties: {
+    parent: { anyOf: [ticketRelationSchema, { type: "null" }] },
+    children: {
+      type: "array",
+      items: ticketRelationSchema,
+    },
+    blockers: {
+      type: "array",
+      items: ticketRelationSchema,
+    },
+    blockedBy: {
+      type: "array",
+      items: ticketRelationSchema,
+    },
+  },
+} as const;
+
+const ticketSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "boardId",
+    "laneId",
+    "parentTicketId",
+    "title",
+    "bodyMarkdown",
+    "bodyHtml",
+    "isCompleted",
+    "isArchived",
+    "priority",
+    "position",
+    "createdAt",
+    "updatedAt",
+    "tags",
+    "comments",
+    "blockerIds",
+    "blockers",
+    "blockedBy",
+    "parent",
+    "children",
+    "ref",
+    "shortRef",
+  ],
+  properties: {
+    id: positiveIntegerSchema,
+    boardId: positiveIntegerSchema,
+    laneId: positiveIntegerSchema,
+    parentTicketId: { anyOf: [positiveIntegerSchema, { type: "null" }] },
+    title: { type: "string" },
+    bodyMarkdown: { type: "string" },
+    bodyHtml: { type: "string" },
+    isCompleted: { type: "boolean" },
+    isArchived: { type: "boolean" },
+    priority: { type: "number" },
+    position: { type: "integer", minimum: 0 },
+    createdAt: { type: "string" },
+    updatedAt: { type: "string" },
+    tags: {
+      type: "array",
+      items: tagViewSchema,
+    },
+    comments: {
+      type: "array",
+      items: commentViewSchema,
+    },
+    blockerIds: {
+      type: "array",
+      items: positiveIntegerSchema,
+    },
+    blockers: {
+      type: "array",
+      items: ticketRelationSchema,
+    },
+    blockedBy: {
+      type: "array",
+      items: ticketRelationSchema,
+    },
+    parent: { anyOf: [ticketRelationSchema, { type: "null" }] },
+    children: {
+      type: "array",
+      items: ticketRelationSchema,
+    },
+    ref: { type: "string" },
+    shortRef: { type: "string" },
+  },
+} as const;
+
 const ticketSummarySchema = {
   type: "object",
   additionalProperties: false,
@@ -338,7 +445,9 @@ const ticketMutationBodySchema = {
     isArchived: { type: "boolean" },
     priority: { type: "number" },
     tagIds: optionalPositiveIntegerArraySchema,
-    blockerIds: optionalPositiveIntegerArraySchema,
+    blockerIds: {
+      anyOf: [optionalPositiveIntegerArraySchema, { type: "null" }],
+    },
   },
 } as const;
 
@@ -1030,10 +1139,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     schema: {
       params: idParamsSchema("ticketId"),
       response: {
-        200: {
-          type: "object",
-          additionalProperties: true,
-        },
+        200: ticketSchema,
         404: errorSchema,
       },
     },
@@ -1081,10 +1187,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     schema: {
       params: idParamsSchema("ticketId"),
       response: {
-        200: {
-          type: "object",
-          additionalProperties: true,
-        },
+        200: ticketRelationsSchema,
         404: errorSchema,
       },
     },
@@ -1387,6 +1490,7 @@ function sanitizeStringArray(values: unknown): string[] | undefined {
 
 function parseTicketMutationBody(body: TicketMutationBody): TicketMutationBody {
   const hasParentTicketId = Object.prototype.hasOwnProperty.call(body ?? {}, "parentTicketId");
+  const hasBlockerIds = Object.prototype.hasOwnProperty.call(body ?? {}, "blockerIds");
   return {
     laneId: body?.laneId,
     parentTicketId: hasParentTicketId ? body?.parentTicketId ?? null : undefined,
@@ -1396,6 +1500,6 @@ function parseTicketMutationBody(body: TicketMutationBody): TicketMutationBody {
     isArchived: body?.isArchived,
     priority: typeof body?.priority === "number" ? body.priority : undefined,
     tagIds: Array.isArray(body?.tagIds) ? body.tagIds : undefined,
-    blockerIds: Array.isArray(body?.blockerIds) ? body.blockerIds : undefined,
+    blockerIds: hasBlockerIds ? (Array.isArray(body?.blockerIds) ? body.blockerIds : []) : undefined,
   };
 }

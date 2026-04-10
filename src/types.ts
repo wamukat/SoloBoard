@@ -116,6 +116,7 @@ export type TicketView = {
   comments: CommentView[];
   blockerIds: Id[];
   blockers: TicketBlockerView[];
+  blockedBy: TicketRelationView[];
   parent: TicketRelationView | null;
   children: TicketRelationView[];
   ref: string;
@@ -190,5 +191,5 @@ export type BoardExport = {
   board: BoardView;
   lanes: LaneView[];
   tags: TagView[];
-  tickets: Array<Omit<TicketView, "bodyHtml" | "blockers" | "parent" | "children" | "ref" | "shortRef">>;
+  tickets: Array<Omit<TicketView, "bodyHtml" | "blockers" | "blockedBy" | "parent" | "children" | "ref" | "shortRef">>;
 };

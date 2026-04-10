@@ -116,6 +116,7 @@ ID ベース:
 - `parent`, `children`, `blockers`, `blockedBy` が返る
 - `blockers` は「このチケットを block している相手」
 - `blockedBy` は「このチケットに block されている相手」
+- `GET /api/tickets/:ticketId` の詳細にも同じ relation フィールドが含まれる
 
 ### activity を取得したい
 

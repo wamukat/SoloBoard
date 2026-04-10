@@ -934,6 +934,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TicketRelation"
+        blockedBy:
+          type: array
+          items:
+            $ref: "#/components/schemas/TicketRelation"
         parent:
           oneOf:
             - $ref: "#/components/schemas/TicketRelation"
@@ -945,7 +949,7 @@ components:
         ref: { type: string }
         shortRef: { type: string }
       required:
-        [id, boardId, laneId, parentTicketId, title, bodyMarkdown, bodyHtml, isCompleted, isArchived, priority, position, createdAt, updatedAt, tags, comments, blockerIds, blockers, parent, children, ref, shortRef]
+        [id, boardId, laneId, parentTicketId, title, bodyMarkdown, bodyHtml, isCompleted, isArchived, priority, position, createdAt, updatedAt, tags, comments, blockerIds, blockers, blockedBy, parent, children, ref, shortRef]
     TicketSummary:
       type: object
       properties:
@@ -989,7 +993,7 @@ components:
           items:
             type: integer
         blockerIds:
-          type: array
+          type: [array, "null"]
           items:
             type: integer
     BoardShell:

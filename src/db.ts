@@ -472,6 +472,7 @@ export class KanbanDb {
     const tagsByTicket = this.getTagsForTicketIds(ticketIds);
     const commentsByTicket = this.getCommentsForTicketIds(ticketIds);
     const blockersByTicket = this.getBlockersForTicketIds(ticketIds);
+    const blockedByByTicket = this.getBlockedTicketsForTicketIds(ticketIds);
     const parentsByTicket = this.getParentsForTicketIds(ticketIds);
     const childrenByTicket = this.getChildrenForTicketIds(ticketIds);
     const board = this.getBoard(boardId);
@@ -482,6 +483,7 @@ export class KanbanDb {
         tagsByTicket.get(row.id) ?? [],
         commentsByTicket.get(row.id) ?? [],
         blockersByTicket.get(row.id) ?? [],
+        blockedByByTicket.get(row.id) ?? [],
         parentsByTicket.get(row.id) ?? null,
         childrenByTicket.get(row.id) ?? [],
       ),
@@ -496,6 +498,7 @@ export class KanbanDb {
     const tagsByTicket = this.getTagsForTicketIds([ticketId]);
     const commentsByTicket = this.getCommentsForTicketIds([ticketId]);
     const blockersByTicket = this.getBlockersForTicketIds([ticketId]);
+    const blockedByByTicket = this.getBlockedTicketsForTicketIds([ticketId]);
     const parentsByTicket = this.getParentsForTicketIds([ticketId]);
     const childrenByTicket = this.getChildrenForTicketIds([ticketId]);
     const board = this.getBoard(row.board_id);
@@ -505,6 +508,7 @@ export class KanbanDb {
       tagsByTicket.get(ticketId) ?? [],
       commentsByTicket.get(ticketId) ?? [],
       blockersByTicket.get(ticketId) ?? [],
+      blockedByByTicket.get(ticketId) ?? [],
       parentsByTicket.get(ticketId) ?? null,
       childrenByTicket.get(ticketId) ?? [],
     );
@@ -918,7 +922,16 @@ export class KanbanDb {
       board: detail.board,
       lanes: detail.lanes,
       tags: detail.tags,
-      tickets: detail.tickets.map(({ bodyHtml: _bodyHtml, blockers: _blockers, parent: _parent, children: _children, ref: _ref, shortRef: _shortRef, ...ticket }) => ticket),
+      tickets: detail.tickets.map(({
+        bodyHtml: _bodyHtml,
+        blockers: _blockers,
+        blockedBy: _blockedBy,
+        parent: _parent,
+        children: _children,
+        ref: _ref,
+        shortRef: _shortRef,
+        ...ticket
+      }) => ticket),
     };
   }
 
@@ -1395,6 +1408,7 @@ function mapTicket(
   tags: TagView[],
   comments: CommentView[],
   blockers: TicketBlockerView[],
+  blockedBy: TicketRelationView[],
   parent: TicketRelationView | null,
   children: TicketRelationView[],
 ): TicketView {
@@ -1416,6 +1430,7 @@ function mapTicket(
     comments,
     blockerIds: blockers.map((blocker) => blocker.id),
     blockers,
+    blockedBy,
     parent,
     children,
     ref: formatTicketRef(boardName, row.id),
