@@ -90,6 +90,34 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await expect(page.locator("#header-edit-button")).toBeVisible();
     await expect(page.locator("#save-comment-button")).toHaveClass(/primary-action/);
 
+    await page.locator("#comment-body").fill("E2E comment **saved**");
+    await page.locator("#save-comment-button").click();
+    await expect(page.locator("#ticket-comments .comment-item")).toContainText("E2E comment saved");
+    await expect(page.locator("#comment-body")).toHaveValue("");
+
+    await page.locator("[data-edit-comment-id]").click();
+    await expect(page.locator("#ux-dialog")).toHaveJSProperty("open", true);
+    await page.locator('[data-field-id="bodyMarkdown"]').fill("E2E comment edited");
+    await page.locator("#ux-submit-button").click();
+    await expect(page.locator("#ux-dialog")).not.toHaveJSProperty("open", true);
+    await expect(page.locator("#ticket-comments .comment-item")).toContainText("E2E comment edited");
+
+    await page.locator("[data-delete-comment-id]").click();
+    await expect(page.locator("#ux-dialog")).toHaveJSProperty("open", true);
+    await expect(page.locator("#ux-submit-button")).toHaveText("Delete");
+    const deleteCommentResponse = page.waitForResponse((response) => response.url().includes("/api/comments/") && response.request().method() === "DELETE");
+    await page.locator("#ux-submit-button").click();
+    const deleteCommentResult = await deleteCommentResponse;
+    expect(deleteCommentResult.status()).toBe(204);
+    await expect(page.locator("#ux-dialog")).not.toHaveJSProperty("open", true);
+    await expect(page.locator("#ticket-comments")).toContainText("No comments yet.");
+    await page.locator("#activity-tab-button").click();
+    await expect(page.locator("#activity-section")).toBeVisible();
+    await expect(page.locator("#ticket-activity")).toContainText("Comment added");
+    await expect(page.locator("#ticket-activity")).toContainText("Comment updated");
+    await expect(page.locator("#ticket-activity")).toContainText("Comment deleted");
+    await page.locator("#comments-tab-button").click();
+
     await page.locator("#header-edit-button").click();
     await expect(page.locator("#editor-form")).toBeVisible();
     await expect(page.locator("#save-ticket-button")).toHaveClass(/primary-action/);

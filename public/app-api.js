@@ -1,10 +1,12 @@
 export async function api(url, init = {}) {
+  const headers = {
+    ...(init.body == null ? {} : { "content-type": "application/json" }),
+    ...(init.headers ?? {}),
+  };
+  const { headers: _headers, ...fetchInit } = init;
   const response = await fetch(url, {
-    headers: {
-      "content-type": "application/json",
-      ...(init.headers ?? {}),
-    },
-    ...init,
+    ...fetchInit,
+    headers,
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ error: response.statusText }));

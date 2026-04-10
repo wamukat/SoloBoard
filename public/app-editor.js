@@ -1,20 +1,12 @@
 import { icon } from "./icons.js";
+import { createTicketCommentsModule } from "./app-ticket-comments.js";
+import { createTicketDetailModule } from "./app-ticket-detail.js";
 import { createTicketRelationPicker } from "./app-ticket-relation-picker.js";
 import { createTicketTagPicker } from "./app-ticket-tag-picker.js";
 
 export function createEditorModule(ctx) {
   const { state, elements } = ctx;
   let saveStateTimer = null;
-
-  function setDetailTab(tab) {
-    const showComments = tab !== "activity";
-    elements.commentsTabButton.classList.toggle("active", showComments);
-    elements.commentsTabButton.setAttribute("aria-selected", String(showComments));
-    elements.activityTabButton.classList.toggle("active", !showComments);
-    elements.activityTabButton.setAttribute("aria-selected", String(!showComments));
-    elements.commentsSection.hidden = !showComments;
-    elements.activitySection.hidden = showComments;
-  }
 
   function getSelectedTagIds() {
     return [...state.editorTagIds];
@@ -251,6 +243,17 @@ export function createEditorModule(ctx) {
     },
   });
 
+  const detailModule = createTicketDetailModule({
+    ...ctx,
+    getBlockingTickets,
+  });
+
+  const commentsModule = createTicketCommentsModule({
+    ...ctx,
+    refreshDialogTicket,
+    setSaveState,
+  });
+
   function setDialogMode(mode) {
     state.dialogMode = mode;
     elements.ticketView.hidden = mode !== "view";
@@ -279,7 +282,7 @@ export function createEditorModule(ctx) {
     state.parentQuery = "";
     state.blockerQuery = "";
     state.childQuery = "";
-    setDetailTab("comments");
+    detailModule.setDetailTab("comments");
   }
 
   function handleEditorDialogClose() {
@@ -302,121 +305,9 @@ export function createEditorModule(ctx) {
     ctx.syncBoardUrl();
   }
 
-  function renderRelationLink(ticket) {
-    return `<a class="ticket-inline-link" href="/tickets/${ticket.id}"><span class="ticket-ref-inline${ticket.isCompleted ? " ticket-ref-completed" : ""}">#${ticket.id}</span>${ctx.escapeHtml(ticket.title)}</a>`;
-  }
-
-  function renderRelationChip(ticket, kind) {
-    return `<a class="ticket-tag-chip ticket-ref-chip ticket-relation-chip ticket-relation-chip-${kind}" href="/tickets/${ticket.id}"><span class="ticket-ref-chip-id${ticket.isCompleted ? " ticket-ref-completed" : ""}">#${ticket.id}</span><span class="ticket-ref-chip-text">${ctx.escapeHtml(ticket.title)}</span></a>`;
-  }
-
-  function renderTicketRelations(ticket) {
-    if (!ticket) {
-      return "";
-    }
-    const parts = [];
-    const blocking = getBlockingTickets(ticket.id);
-    if (ticket.parent) {
-      parts.push(`<div><span class="muted">Parent</span> ${renderRelationChip(ticket.parent, "parent")}</div>`);
-    }
-    if (ticket.children.length) {
-      parts.push(`<div><span class="muted">Children</span> ${ticket.children.map((child) => renderRelationChip(child, "child")).join("")}</div>`);
-    }
-    if (ticket.blockers.length) {
-      parts.push(`<div><span class="muted">Blocked By</span> ${ticket.blockers.map((blocker) => renderRelationChip(blocker, "blocked-by")).join("")}</div>`);
-    }
-    if (blocking.length) {
-      parts.push(`<div><span class="muted">Blocks</span> ${blocking.map((blocked) => renderRelationChip(blocked, "blocks")).join("")}</div>`);
-    }
-    return parts.join("");
-  }
-
-  function renderComments(comments) {
-    if (comments.length === 0) {
-      return '<p class="muted">No comments yet.</p>';
-    }
-    return comments
-      .map(
-        (comment) => `
-          <article class="comment-item">
-            <div class="comment-meta muted">
-              <span>#${comment.id} ${new Date(comment.createdAt).toLocaleString()}</span>
-              <span class="comment-actions">
-                <button type="button" class="ghost icon-button" data-edit-comment-id="${comment.id}" title="Edit comment" aria-label="Edit comment">${icon("pencil")}</button>
-                <button type="button" class="ghost icon-button danger" data-delete-comment-id="${comment.id}" title="Delete comment" aria-label="Delete comment">${icon("trash-2")}</button>
-              </span>
-            </div>
-            <div class="markdown">${comment.bodyHtml}</div>
-          </article>
-        `,
-      )
-      .join("");
-  }
-
-  function renderActivity(activity) {
-    if (!activity.length) {
-      return '<p class="muted">No activity yet.</p>';
-    }
-    return activity
-      .map(
-        (entry) => `
-          <article class="activity-item">
-            <div class="activity-meta muted">${new Date(entry.createdAt).toLocaleString()}</div>
-            <div class="activity-message">${ctx.escapeHtml(entry.message)}</div>
-          </article>
-        `,
-      )
-      .join("");
-  }
-
-  function renderTicketMeta(ticket) {
-    if (!ticket) {
-      return "";
-    }
-    const priority = `<span class="ticket-priority-label">Priority: ${ticket.priority}</span>`;
-    const archived = ticket.isArchived ? '<span class="ticket-archived-label">Archived</span>' : "";
-    const tags = ticket.tags
-      .map((tag) => `<span class="tag" style="background:${ctx.escapeHtml(tag.color)}">${ctx.escapeHtml(tag.name)}</span>`)
-      .join("");
-    return `
-      <div class="ticket-meta-row">${archived}${priority}${tags}</div>
-    `;
-  }
-
-  function syncEditorHeader(ticket) {
-    if (!ticket) {
-      elements.editorHeaderState.hidden = true;
-      elements.editorHeaderId.textContent = "";
-      elements.editorHeaderTitle.hidden = true;
-      elements.editorHeaderTitle.textContent = "";
-      elements.headerEditButton.hidden = true;
-      elements.archiveTicketButton.hidden = true;
-      return;
-    }
-    elements.editorHeaderState.hidden = false;
-    elements.editorHeaderState.textContent = ticket.isCompleted ? "Completed" : "Open";
-    elements.editorHeaderState.className = `ticket-state-pill ${ticket.isCompleted ? "ticket-state-pill-completed" : "ticket-state-pill-open"}`;
-    elements.editorHeaderId.textContent = `#${ticket.id}`;
-    elements.editorHeaderTitle.textContent = ticket.title;
-    elements.editorHeaderTitle.hidden = state.dialogMode !== "view";
-    elements.headerEditButton.hidden = state.dialogMode !== "view";
-    elements.archiveTicketButton.hidden = state.dialogMode !== "edit";
-    elements.archiveTicketButton.textContent = ticket.isArchived ? "Restore" : "Archive";
-  }
-
-  function syncTicketRelations(ticket) {
-    const relationsHtml = renderTicketRelations(ticket);
-    elements.ticketRelations.innerHTML = relationsHtml;
-    elements.ticketRelations.hidden = !relationsHtml;
-  }
-
   function hydrateDialogTicket(ticket, activity = []) {
-    syncEditorHeader(ticket);
-    elements.ticketViewMeta.innerHTML = renderTicketMeta(ticket);
-    syncTicketRelations(ticket);
-    elements.ticketViewBody.innerHTML = ticket.bodyHtml || '<p class="muted">No description</p>';
-    elements.ticketComments.innerHTML = renderComments(ticket.comments ?? []);
-    elements.ticketActivity.innerHTML = renderActivity(activity);
+    detailModule.syncTicketDetail(ticket, activity);
+    elements.ticketComments.innerHTML = commentsModule.renderComments(ticket.comments ?? []);
     elements.ticketTitle.value = ticket.title;
     elements.ticketPriority.value = String(ticket.priority ?? 0);
     elements.ticketCompleted.checked = ticket.isCompleted;
@@ -440,7 +331,7 @@ export function createEditorModule(ctx) {
     blockerPicker.syncOptions();
     syncChildPickerAvailability();
     childPicker.syncOptions();
-    setDetailTab("comments");
+    detailModule.setDetailTab("comments");
   }
 
   async function refreshDialogTicket(ticketId = state.editingTicketId) {
@@ -466,12 +357,8 @@ export function createEditorModule(ctx) {
     elements.ticketPriority.value = String(ticket?.priority ?? 0);
     elements.ticketCompleted.checked = ticket?.isCompleted ?? false;
     elements.ticketBody.value = ticket?.bodyMarkdown ?? "";
-    syncEditorHeader(ticket);
-    elements.ticketViewMeta.innerHTML = renderTicketMeta(ticket);
-    syncTicketRelations(ticket);
-    elements.ticketViewBody.innerHTML = ticket?.bodyHtml ?? '<p class="muted">No description</p>';
-    elements.ticketComments.innerHTML = renderComments(ticket?.comments ?? []);
-    elements.ticketActivity.innerHTML = renderActivity(activity);
+    detailModule.syncTicketDetail(ticket, activity);
+    elements.ticketComments.innerHTML = commentsModule.renderComments(ticket?.comments ?? []);
     elements.commentBody.value = "";
     const selectedLaneId = ticket?.laneId ?? defaultLaneId;
     elements.ticketLane.innerHTML = state.boardDetail.lanes
@@ -505,7 +392,7 @@ export function createEditorModule(ctx) {
     syncChildPickerAvailability();
     childPicker.syncOptions();
     setDialogMode(ticketId ? mode : "edit");
-    setDetailTab("comments");
+    detailModule.setDetailTab("comments");
     elements.editorDialog.showModal();
     ctx.syncDialogScrollLock?.();
     ctx.ensureEditorDialogPosition?.();
@@ -614,65 +501,6 @@ export function createEditorModule(ctx) {
     }
   }
 
-  async function handleCommentAction(event) {
-    const editButton = event.target.closest("[data-edit-comment-id]");
-    if (editButton) {
-      const commentId = Number(editButton.dataset.editCommentId);
-      try {
-        const ticket = await ctx.api(`/api/tickets/${state.editingTicketId}`);
-        const current = (ticket.comments ?? []).find((comment) => comment.id === commentId);
-        if (!current) {
-          throw new Error("Comment not found");
-        }
-        const values = await ctx.requestFields({
-          title: "Edit Comment",
-          submitLabel: "Save",
-          fields: [
-            { id: "bodyMarkdown", label: "Comment", type: "textarea", rows: 8, value: current.bodyMarkdown, required: true },
-          ],
-        });
-        if (!values) {
-          return;
-        }
-        setSaveState("saving", "Saving...");
-        await ctx.sendJson(`/api/comments/${commentId}`, {
-          method: "PATCH",
-          body: { bodyMarkdown: values.bodyMarkdown },
-        });
-        await refreshDialogTicket();
-        await ctx.refreshBoardDetail();
-        setSaveState("saved", "Saved");
-      } catch (error) {
-        setSaveState("error", "Save failed");
-        ctx.showToast(error.message, "error");
-      }
-      return;
-    }
-
-    const deleteButton = event.target.closest("[data-delete-comment-id]");
-    if (!deleteButton) {
-      return;
-    }
-    const commentId = Number(deleteButton.dataset.deleteCommentId);
-    await ctx.confirmAndRun({
-      title: "Delete Comment",
-      message: "Delete this comment?",
-      submitLabel: "Delete",
-      run: async () => {
-        try {
-          setSaveState("saving", "Deleting...");
-          await ctx.api(`/api/comments/${commentId}`, { method: "DELETE" });
-          await refreshDialogTicket();
-          await ctx.refreshBoardDetail();
-          setSaveState("saved", "Deleted");
-        } catch (error) {
-          setSaveState("error", "Delete failed");
-          throw error;
-        }
-      },
-    });
-  }
-
   function clearSaveState() {
     if (saveStateTimer) {
       window.clearTimeout(saveStateTimer);
@@ -717,35 +545,6 @@ export function createEditorModule(ctx) {
     });
   }
 
-  async function addComment(event) {
-    event?.preventDefault?.();
-    if (!state.editingTicketId) {
-      return;
-    }
-    const bodyMarkdown = elements.commentBody.value.trim();
-    if (!bodyMarkdown) {
-      ctx.showToast("Comment is required", "error");
-      return;
-    }
-    try {
-      elements.saveCommentButton.disabled = true;
-      await ctx.sendJson(`/api/tickets/${state.editingTicketId}/comments`, {
-        method: "POST",
-        body: { bodyMarkdown },
-      });
-      const ticket = await ctx.api(`/api/tickets/${state.editingTicketId}`);
-      await refreshDialogTicket(ticket.id);
-      elements.commentBody.value = "";
-      await ctx.refreshBoardDetail();
-      setSaveState("saved", "Comment saved");
-    } catch (error) {
-      setSaveState("error", "Save failed");
-      ctx.showToast(error.message, "error");
-    } finally {
-      elements.saveCommentButton.disabled = false;
-    }
-  }
-
   function handleDocumentClick(event) {
     if (!elements.editorDialog.open) {
       return;
@@ -781,11 +580,11 @@ export function createEditorModule(ctx) {
   }
 
   return {
-    addComment,
+    addComment: commentsModule.addComment,
     closeEditor,
     createTagFromEditor: tagPicker.createTagFromEditor,
     deleteTicket,
-    handleCommentAction,
+    handleCommentAction: commentsModule.handleCommentAction,
     handleBlockerFieldClick: blockerPicker.handleFieldClick,
     handleBlockerSearchInput: blockerPicker.handleSearchInput,
     handleBlockerSearchKeydown: blockerPicker.handleSearchKeydown,
@@ -807,7 +606,7 @@ export function createEditorModule(ctx) {
     openParentOptions: parentPicker.openOptions,
     openTicketTagOptions: tagPicker.openOptions,
     saveTicket,
-    setDetailTab,
+    setDetailTab: detailModule.setDetailTab,
     setDialogMode,
     syncTicketTagOptions: tagPicker.syncOptions,
     toggleTicketArchive,

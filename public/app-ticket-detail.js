@@ -1,0 +1,109 @@
+export function createTicketDetailModule(ctx) {
+  const { state, elements } = ctx;
+
+  function setDetailTab(tab) {
+    const showComments = tab !== "activity";
+    elements.commentsTabButton.classList.toggle("active", showComments);
+    elements.commentsTabButton.setAttribute("aria-selected", String(showComments));
+    elements.activityTabButton.classList.toggle("active", !showComments);
+    elements.activityTabButton.setAttribute("aria-selected", String(!showComments));
+    elements.commentsSection.hidden = !showComments;
+    elements.activitySection.hidden = showComments;
+  }
+
+  function syncTicketDetail(ticket, activity = []) {
+    syncEditorHeader(ticket);
+    elements.ticketViewMeta.innerHTML = renderTicketMeta(ticket);
+    syncTicketRelations(ticket);
+    elements.ticketViewBody.innerHTML = ticket?.bodyHtml || '<p class="muted">No description</p>';
+    elements.ticketActivity.innerHTML = renderActivity(activity);
+  }
+
+  function syncEditorHeader(ticket) {
+    if (!ticket) {
+      elements.editorHeaderState.hidden = true;
+      elements.editorHeaderId.textContent = "";
+      elements.editorHeaderTitle.hidden = true;
+      elements.editorHeaderTitle.textContent = "";
+      elements.headerEditButton.hidden = true;
+      elements.archiveTicketButton.hidden = true;
+      return;
+    }
+    elements.editorHeaderState.hidden = false;
+    elements.editorHeaderState.textContent = ticket.isCompleted ? "Completed" : "Open";
+    elements.editorHeaderState.className = `ticket-state-pill ${ticket.isCompleted ? "ticket-state-pill-completed" : "ticket-state-pill-open"}`;
+    elements.editorHeaderId.textContent = `#${ticket.id}`;
+    elements.editorHeaderTitle.textContent = ticket.title;
+    elements.editorHeaderTitle.hidden = state.dialogMode !== "view";
+    elements.headerEditButton.hidden = state.dialogMode !== "view";
+    elements.archiveTicketButton.hidden = state.dialogMode !== "edit";
+    elements.archiveTicketButton.textContent = ticket.isArchived ? "Restore" : "Archive";
+  }
+
+  function renderTicketMeta(ticket) {
+    if (!ticket) {
+      return "";
+    }
+    const priority = `<span class="ticket-priority-label">Priority: ${ticket.priority}</span>`;
+    const archived = ticket.isArchived ? '<span class="ticket-archived-label">Archived</span>' : "";
+    const tags = ticket.tags
+      .map((tag) => `<span class="tag" style="background:${ctx.escapeHtml(tag.color)}">${ctx.escapeHtml(tag.name)}</span>`)
+      .join("");
+    return `
+      <div class="ticket-meta-row">${archived}${priority}${tags}</div>
+    `;
+  }
+
+  function syncTicketRelations(ticket) {
+    const relationsHtml = renderTicketRelations(ticket);
+    elements.ticketRelations.innerHTML = relationsHtml;
+    elements.ticketRelations.hidden = !relationsHtml;
+  }
+
+  function renderTicketRelations(ticket) {
+    if (!ticket) {
+      return "";
+    }
+    const parts = [];
+    const blocking = ctx.getBlockingTickets(ticket.id);
+    if (ticket.parent) {
+      parts.push(`<div><span class="muted">Parent</span> ${renderRelationChip(ticket.parent, "parent")}</div>`);
+    }
+    if (ticket.children.length) {
+      parts.push(`<div><span class="muted">Children</span> ${ticket.children.map((child) => renderRelationChip(child, "child")).join("")}</div>`);
+    }
+    if (ticket.blockers.length) {
+      parts.push(`<div><span class="muted">Blocked By</span> ${ticket.blockers.map((blocker) => renderRelationChip(blocker, "blocked-by")).join("")}</div>`);
+    }
+    if (blocking.length) {
+      parts.push(`<div><span class="muted">Blocks</span> ${blocking.map((blocked) => renderRelationChip(blocked, "blocks")).join("")}</div>`);
+    }
+    return parts.join("");
+  }
+
+  function renderRelationChip(ticket, kind) {
+    return `<a class="ticket-tag-chip ticket-ref-chip ticket-relation-chip ticket-relation-chip-${kind}" href="/tickets/${ticket.id}"><span class="ticket-ref-chip-id${ticket.isCompleted ? " ticket-ref-completed" : ""}">#${ticket.id}</span><span class="ticket-ref-chip-text">${ctx.escapeHtml(ticket.title)}</span></a>`;
+  }
+
+  function renderActivity(activity) {
+    if (!activity.length) {
+      return '<p class="muted">No activity yet.</p>';
+    }
+    return activity
+      .map(
+        (entry) => `
+          <article class="activity-item">
+            <div class="activity-meta muted">${new Date(entry.createdAt).toLocaleString()}</div>
+            <div class="activity-message">${ctx.escapeHtml(entry.message)}</div>
+          </article>
+        `,
+      )
+      .join("");
+  }
+
+  return {
+    setDetailTab,
+    syncEditorHeader,
+    syncTicketDetail,
+  };
+}
