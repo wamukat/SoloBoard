@@ -9,14 +9,8 @@
   <body>
     <div class="shell">
       <aside class="sidebar" id="sidebar">
-        <div class="sidebar-head">
-          <div class="sidebar-brand">
-            <button id="sidebar-toggle-button" type="button" class="icon-button ghost" title="Toggle sidebar">⟨</button>
-            <h1>SoloBoard</h1>
-          </div>
-          <button id="new-board-button" type="button" class="icon-button" title="New board">+</button>
-        </div>
         <div id="board-list" class="board-list"></div>
+        <button id="new-board-button" type="button" class="board-add-button icon-button" title="New board">+</button>
 
         <section id="sidebar-view-section" class="sidebar-section">
           <div class="sidebar-section-head">
@@ -53,12 +47,13 @@
           </div>
         </section>
       </aside>
+      <button id="sidebar-toggle-button" type="button" class="sidebar-edge-toggle icon-button ghost" title="Toggle sidebar">⟨</button>
 
       <main class="main">
         <header class="toolbar">
           <div class="board-title-row">
             <button id="sidebar-reopen-button" type="button" class="icon-button ghost" title="Open sidebar" hidden>☰</button>
-            <h2 id="board-title">No board selected</h2>
+            <h2 id="board-title" class="collapsed-board-title">No board selected</h2>
           </div>
           <div class="toolbar-actions">
             <input id="search-input" type="search" placeholder="Search tickets" />
@@ -82,25 +77,26 @@
           </div>
         </section>
         <section id="list-board" class="list-board" hidden></section>
+        <footer class="main-footer">
+          <a href="https://github.com/wamukat/SoloBoard" target="_blank" rel="noreferrer">GitHub</a>
+        </footer>
       </main>
     </div>
 
     <dialog id="editor-dialog" class="editor-dialog">
       <div class="editor-form">
         <div class="editor-header">
-          <h3 id="editor-title">Ticket</h3>
-          <button id="close-dialog-button" type="button" class="ghost">Close</button>
+          <div class="editor-dialog-heading">
+            <div class="editor-dialog-heading-top">
+              <span id="editor-header-state" class="ticket-state-pill ticket-state-pill-open" hidden>Open</span>
+              <span id="editor-header-id" class="muted"></span>
+            </div>
+            <h3 id="editor-title" class="editor-dialog-title">New Ticket</h3>
+          </div>
+          <button id="header-edit-button" type="button" class="ghost icon-button dialog-close-button" aria-label="Edit ticket" title="Edit" hidden>✎</button>
         </div>
 
         <section id="ticket-view" class="ticket-view" hidden>
-          <div class="ticket-view-head">
-            <div>
-              <div id="ticket-view-id" class="muted"></div>
-              <h4 id="ticket-view-title" class="ticket-detail-title"></h4>
-            </div>
-            <button id="edit-ticket-button" type="button">Edit</button>
-          </div>
-
           <div id="ticket-view-meta" class="ticket-view-meta"></div>
           <div id="ticket-view-body" class="markdown ticket-view-body"></div>
           <div id="ticket-relations" class="ticket-relations"></div>
@@ -131,31 +127,29 @@
             <textarea id="ticket-body" name="bodyMarkdown" rows="10"></textarea>
           </label>
 
-           <label>
-            Lane
-            <select id="ticket-lane" name="laneId"></select>
-          </label>
+          <div class="editor-inline-row">
+             <label>
+              Lane
+              <select id="ticket-lane" name="laneId"></select>
+            </label>
 
-           <label>
-            Parent
-            <select id="ticket-parent" name="parentTicketId">
-              <option value="">No parent</option>
-            </select>
-          </label>
+             <label>
+              Priority
+              <input id="ticket-priority" name="priority" type="number" step="1" value="0" />
+            </label>
 
-           <label>
-            Priority
-            <input id="ticket-priority" name="priority" type="number" step="1" value="0" />
-          </label>
-
-           <label id="ticket-completed-row" class="checkbox">
-            <input id="ticket-completed" name="isCompleted" type="checkbox" />
-            Completed
-          </label>
+             <label id="ticket-completed-row" class="checkbox">
+              <input id="ticket-completed" name="isCompleted" type="checkbox" />
+              Completed
+            </label>
+          </div>
 
            <label>
             Tags
             <div class="ticket-tag-field">
+              <div class="ticket-tag-field-head">
+                <button id="ticket-new-tag-button" type="button" class="icon-button ghost" title="New tag">+</button>
+              </div>
               <div id="ticket-tag-toggle" class="ticket-tag-input" aria-expanded="false" role="combobox" aria-haspopup="listbox" aria-expanded="false">
                 <div id="ticket-tag-summary" class="ticket-tag-summary"></div>
                 <input id="ticket-tag-search" type="text" class="ticket-tag-search" placeholder="Add tags" autocomplete="off" />
@@ -172,6 +166,18 @@
                 <input id="ticket-blocker-search" type="text" class="ticket-tag-search" placeholder="Add blockers by ID or title" autocomplete="off" />
               </div>
               <div id="ticket-blocker-options" class="ticket-tag-options" hidden></div>
+            </div>
+          </label>
+
+           <label>
+            Parent
+            <div class="ticket-tag-field">
+              <div id="ticket-parent-toggle" class="ticket-tag-input" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                <div id="ticket-parent-summary" class="ticket-tag-summary"></div>
+                <input id="ticket-parent-search" type="text" class="ticket-tag-search" placeholder="Set parent by ID or title" autocomplete="off" />
+              </div>
+              <div id="ticket-parent-options" class="ticket-tag-options" hidden></div>
+              <input id="ticket-parent" name="parentTicketId" type="hidden" value="" />
             </div>
           </label>
 
@@ -203,12 +209,13 @@
       <form id="ux-form" class="ux-form" method="dialog">
         <div class="editor-header">
           <h3 id="ux-title">Action</h3>
-          <button id="ux-cancel-button" type="button" class="ghost">Close</button>
+          <button id="ux-cancel-button" type="button" class="ghost icon-button dialog-close-button" aria-label="Close dialog" title="Close">×</button>
         </div>
         <p id="ux-message" class="muted" hidden></p>
         <div id="ux-fields" class="ux-fields"></div>
         <div id="ux-error" class="danger" hidden></div>
         <div class="editor-actions">
+          <button id="ux-danger-button" type="button" class="danger" hidden>Delete</button>
           <button id="ux-dismiss-button" type="button" class="ghost">Cancel</button>
           <button id="ux-submit-button" type="submit">Save</button>
         </div>

@@ -192,11 +192,19 @@ export function createBoardModule(ctx) {
       .map((tag) => `<span class="tag" style="background:${ctx.escapeHtml(tag.color)}">${ctx.escapeHtml(tag.name)}</span>`)
       .join("");
     const blockedBy = ticket.blockers.length
-      ? `blocked by ${ticket.blockers.map((blocker) => `#${blocker.id}`).join(", ")}`
+      ? `blocked by ${ticket.blockers
+          .map(
+            (blocker) =>
+              `<span class="ticket-ref-inline${blocker.isCompleted ? " ticket-ref-completed" : ""}">#${blocker.id}</span>`,
+          )
+          .join(", ")}`
       : "";
     const blocks = state.boardTickets
       .filter((candidate) => candidate.id !== ticket.id && candidate.blockerIds.includes(ticket.id))
-      .map((candidate) => `#${candidate.id}`);
+      .map(
+        (candidate) =>
+          `<span class="ticket-ref-inline${candidate.isCompleted ? " ticket-ref-completed" : ""}">#${candidate.id}</span>`,
+      );
     const relations = [
       blockedBy,
       blocks.length ? `blocks ${blocks.join(", ")}` : "",
@@ -500,53 +508,40 @@ export function createBoardModule(ctx) {
     elements.sidebarTagList.innerHTML = "";
     for (const tag of tags) {
       const row = document.createElement("div");
-      row.className = "tag-manager-row";
+      row.className = "sidebar-tag-row";
       row.innerHTML = `
-        <input type="text" value="${ctx.escapeHtml(tag.name)}" aria-label="Tag name" />
-        <input type="color" value="${ctx.escapeHtml(tag.color)}" aria-label="Tag color" />
-        <button type="button" class="icon-button" title="Save tag">✓</button>
-        <button type="button" class="icon-button danger" title="Delete tag">×</button>
+        <span class="sidebar-tag-badge" style="background:${ctx.escapeHtml(tag.color)}">${ctx.escapeHtml(tag.name)}</span>
+        <button type="button" class="icon-button" title="Edit tag">✎</button>
       `;
-
-      const nameInput = row.querySelector('input[type="text"]');
-      const colorInput = row.querySelector('input[type="color"]');
-      const saveButton = row.querySelector('button[title="Save tag"]');
-      const deleteButton = row.querySelector('button[title="Delete tag"]');
-
-      saveButton.addEventListener("click", async () => {
-        const name = nameInput.value.trim();
-        if (!name) {
-          ctx.showToast("Tag name is required", "error");
-          nameInput.focus();
+      row.querySelector('button[title="Edit tag"]').addEventListener("click", async () => {
+        const result = await ctx.requestFieldsAction({
+          title: "Edit Tag",
+          submitLabel: "Save",
+          dangerLabel: "Delete",
+          fields: [
+            { id: "name", label: "Tag name", value: tag.name, required: true },
+            { id: "color", label: "Color", value: tag.color, required: true, type: "color" },
+          ],
+        });
+        if (!result) {
           return;
         }
         try {
-          await ctx.sendJson(`/api/tags/${tag.id}`, {
-            method: "PATCH",
-            body: { name, color: colorInput.value },
-          });
+          if (result.action === "danger") {
+            await ctx.api(`/api/tags/${tag.id}`, { method: "DELETE" });
+            ctx.showToast("Tag deleted");
+          } else if (result.action === "submit") {
+            await ctx.sendJson(`/api/tags/${tag.id}`, {
+              method: "PATCH",
+              body: { name: result.values.name, color: result.values.color },
+            });
+            ctx.showToast("Tag updated");
+          }
           await ctx.refreshBoardDetail();
           ctx.syncTicketTagOptions();
           renderSidebarTags();
-          ctx.showToast("Tag updated");
         } catch (error) {
           ctx.showToast(error.message, "error");
-        }
-      });
-
-      deleteButton.addEventListener("click", async () => {
-        const deleted = await ctx.confirmAndRun({
-          title: "Delete Tag",
-          message: `Delete tag "${tag.name}"?`,
-          submitLabel: "Delete",
-          run: async () => {
-            await ctx.api(`/api/tags/${tag.id}`, { method: "DELETE" });
-            await ctx.refreshBoardDetail();
-            ctx.syncTicketTagOptions();
-          },
-        });
-        if (deleted) {
-          renderSidebarTags();
         }
       });
 

@@ -31,6 +31,7 @@ const state = {
   editorChildIds: [],
   editorOriginalChildIds: [],
   tagQuery: "",
+  parentQuery: "",
   blockerQuery: "",
   childQuery: "",
 };
@@ -60,11 +61,12 @@ const elements = {
   exportBoardButton: document.querySelector("#export-board-button"),
   importBoardInput: document.querySelector("#import-board-input"),
   editorDialog: document.querySelector("#editor-dialog"),
+  editorHeaderState: document.querySelector("#editor-header-state"),
+  editorHeaderId: document.querySelector("#editor-header-id"),
+  headerEditButton: document.querySelector("#header-edit-button"),
   ticketView: document.querySelector("#ticket-view"),
   editorForm: document.querySelector("#editor-form"),
   editorTitle: document.querySelector("#editor-title"),
-  ticketViewId: document.querySelector("#ticket-view-id"),
-  ticketViewTitle: document.querySelector("#ticket-view-title"),
   ticketViewMeta: document.querySelector("#ticket-view-meta"),
   ticketRelations: document.querySelector("#ticket-relations"),
   ticketViewBody: document.querySelector("#ticket-view-body"),
@@ -72,12 +74,16 @@ const elements = {
   commentForm: document.querySelector("#comment-form"),
   commentBody: document.querySelector("#comment-body"),
   saveCommentButton: document.querySelector("#save-comment-button"),
-  editTicketButton: document.querySelector("#edit-ticket-button"),
   ticketTitle: document.querySelector("#ticket-title"),
   ticketLane: document.querySelector("#ticket-lane"),
   ticketParent: document.querySelector("#ticket-parent"),
+  ticketParentToggle: document.querySelector("#ticket-parent-toggle"),
+  ticketParentSummary: document.querySelector("#ticket-parent-summary"),
+  ticketParentSearch: document.querySelector("#ticket-parent-search"),
+  ticketParentOptions: document.querySelector("#ticket-parent-options"),
   ticketPriority: document.querySelector("#ticket-priority"),
   ticketCompleted: document.querySelector("#ticket-completed"),
+  ticketNewTagButton: document.querySelector("#ticket-new-tag-button"),
   ticketTagToggle: document.querySelector("#ticket-tag-toggle"),
   ticketTagSummary: document.querySelector("#ticket-tag-summary"),
   ticketTagSearch: document.querySelector("#ticket-tag-search"),
@@ -95,13 +101,13 @@ const elements = {
   deleteTicketButton: document.querySelector("#delete-ticket-button"),
   ticketCompletedRow: document.querySelector("#ticket-completed-row"),
   cancelEditButton: document.querySelector("#cancel-edit-button"),
-  closeDialogButton: document.querySelector("#close-dialog-button"),
   uxDialog: document.querySelector("#ux-dialog"),
   uxForm: document.querySelector("#ux-form"),
   uxTitle: document.querySelector("#ux-title"),
   uxMessage: document.querySelector("#ux-message"),
   uxFields: document.querySelector("#ux-fields"),
   uxError: document.querySelector("#ux-error"),
+  uxDangerButton: document.querySelector("#ux-danger-button"),
   uxSubmitButton: document.querySelector("#ux-submit-button"),
   uxDismissButton: document.querySelector("#ux-dismiss-button"),
   uxCancelButton: document.querySelector("#ux-cancel-button"),
@@ -142,6 +148,7 @@ function bindEvents() {
   elements.renameBoardButton.addEventListener("click", renameBoard);
   elements.deleteBoardButton.addEventListener("click", deleteBoard);
   elements.ticketTagToggle.addEventListener("click", handleTicketTagFieldClick);
+  elements.ticketNewTagButton.addEventListener("click", createTagFromEditor);
   elements.ticketTagSearch.addEventListener("focus", openTicketTagOptions);
   elements.ticketTagSearch.addEventListener("input", handleTicketTagSearchInput);
   elements.ticketTagSearch.addEventListener("keydown", handleTicketTagSearchKeydown);
@@ -153,7 +160,10 @@ function bindEvents() {
   elements.ticketChildSearch.addEventListener("focus", openChildOptions);
   elements.ticketChildSearch.addEventListener("input", handleChildSearchInput);
   elements.ticketChildSearch.addEventListener("keydown", handleChildSearchKeydown);
-  elements.ticketParent.addEventListener("change", handleParentChange);
+  elements.ticketParentToggle.addEventListener("click", handleParentFieldClick);
+  elements.ticketParentSearch.addEventListener("focus", openParentOptions);
+  elements.ticketParentSearch.addEventListener("input", handleParentSearchInput);
+  elements.ticketParentSearch.addEventListener("keydown", handleParentSearchKeydown);
   elements.viewModeButtons.forEach((button) => {
     button.addEventListener("click", () => {
       state.viewMode = button.dataset.viewMode || "kanban";
@@ -185,8 +195,9 @@ function bindEvents() {
   elements.commentForm.addEventListener("submit", addComment);
   elements.saveCommentButton.addEventListener("click", addComment);
   elements.uxForm.addEventListener("submit", handleUxSubmit);
+  elements.uxDangerButton.addEventListener("click", handleUxDanger);
   elements.deleteTicketButton.addEventListener("click", deleteTicket);
-  elements.editTicketButton.addEventListener("click", () => setDialogMode("edit"));
+  elements.headerEditButton.addEventListener("click", () => setDialogMode("edit"));
   elements.cancelEditButton.addEventListener("click", () => {
     if (state.editingTicketId) {
       setDialogMode("view");
@@ -194,11 +205,12 @@ function bindEvents() {
     }
     closeEditor();
   });
-  elements.closeDialogButton.addEventListener("click", closeEditor);
   elements.editorDialog.addEventListener("close", handleEditorDialogClose);
+  elements.editorDialog.addEventListener("click", handleDialogBackdropClick);
   elements.uxCancelButton.addEventListener("click", () => finishUxDialog(null));
   elements.uxDismissButton.addEventListener("click", () => finishUxDialog(null));
   elements.uxDialog.addEventListener("close", () => finishUxDialog(null));
+  elements.uxDialog.addEventListener("click", handleDialogBackdropClick);
   elements.exportBoardButton.addEventListener("click", exportBoard);
   elements.importBoardInput.addEventListener("change", importBoard);
   elements.laneBoard.addEventListener("dragover", handleLaneDragOver);
@@ -209,6 +221,27 @@ function bindEvents() {
     });
   });
   document.addEventListener("click", handleDocumentClick);
+}
+
+function handleDialogBackdropClick(event) {
+  const dialog = event.currentTarget;
+  if (!(dialog instanceof HTMLDialogElement) || event.target !== dialog) {
+    return;
+  }
+  const rect = dialog.getBoundingClientRect();
+  const isInside =
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom;
+  if (isInside) {
+    return;
+  }
+  if (dialog === elements.editorDialog) {
+    closeEditor();
+    return;
+  }
+  finishUxDialog(null);
 }
 
 async function refreshBoards() {
@@ -468,6 +501,7 @@ const {
   addComment,
   closeEditor,
   confirmAndRun,
+  createTagFromEditor,
   deleteTicket,
   finishUxDialog,
   handleBlockerFieldClick,
@@ -479,15 +513,21 @@ const {
   handleDocumentClick,
   handleEditorDialogClose,
   handleParentChange,
+  handleParentFieldClick,
+  handleParentSearchInput,
+  handleParentSearchKeydown,
   handleTicketTagSearchInput,
   handleTicketTagSearchKeydown,
   handleTicketTagFieldClick,
+  handleUxDanger,
   handleUxSubmit,
   openBlockerOptions,
   openChildOptions,
   openEditor,
+  openParentOptions,
   openTicketTagOptions,
   requestFields,
+  requestFieldsAction,
   saveTicket,
   setDialogMode,
   showToast,
@@ -504,6 +544,7 @@ const boardModule = createBoardModule({
   refreshBoardDetail,
   refreshBoards,
   requestFields,
+  requestFieldsAction,
   selectBoard,
   sendJson,
   showToast,

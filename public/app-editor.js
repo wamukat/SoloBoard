@@ -96,6 +96,95 @@ export function createEditorModule(ctx) {
       .sort((a, b) => b.priority - a.priority || a.id - b.id);
   }
 
+  function getSelectedParentId() {
+    return elements.ticketParent.value ? Number(elements.ticketParent.value) : null;
+  }
+
+  function getAvailableParentTickets() {
+    return getBoardTickets()
+      .filter((ticket) => ticket.id !== state.editingTicketId)
+      .filter((ticket) => ticket.parentTicketId == null)
+      .sort((a, b) => b.priority - a.priority || a.id - b.id);
+  }
+
+  function syncParentOptions() {
+    const selectedParent = getTicketById(getSelectedParentId());
+    elements.ticketParentSummary.innerHTML = selectedParent
+      ? renderTicketSummaryChip(selectedParent, "data-remove-parent-id")
+      : '<span class="ticket-tag-placeholder">No parent</span>';
+
+    const visibleTickets = getAvailableParentTickets().filter((ticket) => {
+      if (selectedParent?.id === ticket.id) {
+        return true;
+      }
+      return matchTicketQuery(ticket, state.parentQuery);
+    });
+
+    elements.ticketParentOptions.innerHTML = visibleTickets.length
+      ? visibleTickets.map((ticket) => renderTicketOption(ticket, "data-parent-id", selectedParent?.id === ticket.id)).join("")
+      : '<div class="tag-picker-empty">No matching tickets</div>';
+  }
+
+  function openParentOptions() {
+    closeTicketTagOptions();
+    closeBlockerOptions();
+    closeChildOptions();
+    elements.ticketParentOptions.hidden = false;
+    elements.ticketParentToggle.setAttribute("aria-expanded", "true");
+  }
+
+  function closeParentOptions() {
+    elements.ticketParentOptions.hidden = true;
+    elements.ticketParentToggle.setAttribute("aria-expanded", "false");
+  }
+
+  function handleParentFieldClick(event) {
+    const removeButton = event.target.closest("[data-remove-parent-id]");
+    if (removeButton) {
+      event.preventDefault();
+      setParent(null);
+      return;
+    }
+    openParentOptions();
+    elements.ticketParentSearch.focus();
+  }
+
+  function handleParentSearchInput(event) {
+    state.parentQuery = event.target.value;
+    openParentOptions();
+    syncParentOptions();
+  }
+
+  function handleParentSearchKeydown(event) {
+    if (event.key === "Backspace" && !elements.ticketParentSearch.value && getSelectedParentId() != null) {
+      event.preventDefault();
+      setParent(null);
+      return;
+    }
+    if (event.key === "Enter") {
+      const firstOption = elements.ticketParentOptions.querySelector("[data-parent-id]");
+      if (firstOption) {
+        event.preventDefault();
+        setParent(Number(firstOption.dataset.parentId));
+      }
+      return;
+    }
+    if (event.key === "Escape") {
+      closeParentOptions();
+      elements.ticketParentSearch.blur();
+    }
+  }
+
+  function setParent(ticketId) {
+    elements.ticketParent.value = ticketId == null ? "" : String(ticketId);
+    state.parentQuery = "";
+    elements.ticketParentSearch.value = "";
+    syncParentOptions();
+    handleParentChange();
+    openParentOptions();
+    elements.ticketParentSearch.focus();
+  }
+
   function syncBlockerOptions() {
     const selectedTickets = state.editorBlockerIds.map(getTicketById).filter(Boolean);
     elements.ticketBlockerSummary.innerHTML = selectedTickets.length
@@ -178,7 +267,7 @@ export function createEditorModule(ctx) {
   }
 
   function getAvailableChildTickets() {
-    if (!state.editingTicketId || elements.ticketParent.value) {
+    if (!state.editingTicketId || getSelectedParentId() != null) {
       return [];
     }
     return getBoardTickets()
@@ -188,13 +277,13 @@ export function createEditorModule(ctx) {
   }
 
   function syncChildPickerAvailability() {
-    const canEditChildren = Boolean(state.editingTicketId) && !elements.ticketParent.value;
+    const canEditChildren = Boolean(state.editingTicketId) && getSelectedParentId() == null;
     elements.ticketChildrenRow.hidden = !state.editingTicketId;
     elements.ticketChildSearch.disabled = !canEditChildren;
     elements.ticketChildToggle.classList.toggle("is-disabled", !canEditChildren);
     if (!canEditChildren) {
       closeChildOptions();
-      if (elements.ticketParent.value) {
+      if (getSelectedParentId() != null) {
         state.editorChildIds = [];
       }
     }
@@ -204,9 +293,9 @@ export function createEditorModule(ctx) {
     const selectedTickets = state.editorChildIds.map(getTicketById).filter(Boolean);
     elements.ticketChildSummary.innerHTML = selectedTickets.length
       ? selectedTickets.map((ticket) => renderTicketSummaryChip(ticket, "data-remove-child-id")).join("")
-      : `<span class="ticket-tag-placeholder">${state.editingTicketId ? (elements.ticketParent.value ? "Clear parent to edit children" : "Add children") : "Save ticket first"}</span>`;
+      : `<span class="ticket-tag-placeholder">${state.editingTicketId ? (getSelectedParentId() != null ? "Clear parent to edit children" : "Add children") : "Save ticket first"}</span>`;
 
-    if (!state.editingTicketId || elements.ticketParent.value) {
+    if (!state.editingTicketId || getSelectedParentId() != null) {
       elements.ticketChildOptions.innerHTML = '<div class="tag-picker-empty">Children cannot be edited while this ticket has a parent</div>';
       return;
     }
@@ -224,10 +313,11 @@ export function createEditorModule(ctx) {
   }
 
   function openChildOptions() {
-    if (!state.editingTicketId || elements.ticketParent.value) {
+    if (!state.editingTicketId || getSelectedParentId() != null) {
       return;
     }
     closeTicketTagOptions();
+    closeParentOptions();
     closeBlockerOptions();
     elements.ticketChildOptions.hidden = false;
     elements.ticketChildToggle.setAttribute("aria-expanded", "true");
@@ -295,6 +385,7 @@ export function createEditorModule(ctx) {
   }
 
   function openTicketTagOptions() {
+    closeParentOptions();
     closeBlockerOptions();
     closeChildOptions();
     elements.ticketTagOptions.hidden = false;
@@ -357,11 +448,38 @@ export function createEditorModule(ctx) {
     elements.ticketTagSearch.focus();
   }
 
+  async function createTagFromEditor() {
+    if (!state.activeBoardId) {
+      return;
+    }
+    const values = await requestFields({
+      title: "New Tag",
+      submitLabel: "Create",
+      fields: [
+        { id: "name", label: "Name", required: true },
+        { id: "color", label: "Color", type: "color", value: "#2f7f6f", required: true },
+      ],
+    });
+    if (!values) {
+      return;
+    }
+    const created = await ctx.sendJson(`/api/boards/${state.activeBoardId}/tags`, {
+      method: "POST",
+      body: values,
+    });
+    await ctx.refreshBoardDetail();
+    state.editorTagIds = [...new Set([...state.editorTagIds, created.id])];
+    syncTicketTagOptions();
+    showToast("Tag created");
+  }
+
   function setDialogMode(mode) {
     state.dialogMode = mode;
     elements.ticketView.hidden = mode !== "view";
     elements.editorForm.hidden = mode !== "edit";
+    elements.headerEditButton.hidden = mode !== "view" || !state.editingTicketId;
     if (mode !== "edit") {
+      closeParentOptions();
       closeTicketTagOptions();
       closeBlockerOptions();
       closeChildOptions();
@@ -376,6 +494,7 @@ export function createEditorModule(ctx) {
     state.editorChildIds = [];
     state.editorOriginalChildIds = [];
     state.tagQuery = "";
+    state.parentQuery = "";
     state.blockerQuery = "";
     state.childQuery = "";
   }
@@ -393,6 +512,7 @@ export function createEditorModule(ctx) {
     if (elements.editorDialog.open) {
       elements.editorDialog.close();
     }
+    closeParentOptions();
     closeTicketTagOptions();
     closeBlockerOptions();
     closeChildOptions();
@@ -400,7 +520,11 @@ export function createEditorModule(ctx) {
   }
 
   function renderRelationLink(ticket) {
-    return `<a class="ticket-inline-link" href="/tickets/${ticket.id}">#${ticket.id} P${ticket.priority} ${ctx.escapeHtml(ticket.title)}</a>`;
+    return `<a class="ticket-inline-link" href="/tickets/${ticket.id}"><span class="ticket-ref-inline${ticket.isCompleted ? " ticket-ref-completed" : ""}">#${ticket.id}</span>${ctx.escapeHtml(ticket.title)}</a>`;
+  }
+
+  function renderRelationChip(ticket, kind) {
+    return `<a class="ticket-tag-chip ticket-ref-chip ticket-relation-chip ticket-relation-chip-${kind}" href="/tickets/${ticket.id}"><span class="ticket-ref-chip-id${ticket.isCompleted ? " ticket-ref-completed" : ""}">#${ticket.id}</span><span class="ticket-ref-chip-text">${ctx.escapeHtml(ticket.title)}</span></a>`;
   }
 
   function renderTicketRelations(ticket) {
@@ -408,11 +532,20 @@ export function createEditorModule(ctx) {
       return "";
     }
     const parts = [];
+    const blocking = getBoardTickets().filter(
+      (candidate) => candidate.id !== ticket.id && candidate.blockerIds.includes(ticket.id),
+    );
     if (ticket.parent) {
-      parts.push(`<div><span class="muted">Parent</span> ${renderRelationLink(ticket.parent)}</div>`);
+      parts.push(`<div><span class="muted">Parent</span> ${renderRelationChip(ticket.parent, "parent")}</div>`);
     }
     if (ticket.children.length) {
-      parts.push(`<div><span class="muted">Children</span> ${ticket.children.map(renderRelationLink).join("")}</div>`);
+      parts.push(`<div><span class="muted">Children</span> ${ticket.children.map((child) => renderRelationChip(child, "child")).join("")}</div>`);
+    }
+    if (ticket.blockers.length) {
+      parts.push(`<div><span class="muted">Blocked By</span> ${ticket.blockers.map((blocker) => renderRelationChip(blocker, "blocked-by")).join("")}</div>`);
+    }
+    if (blocking.length) {
+      parts.push(`<div><span class="muted">Blocks</span> ${blocking.map((blocked) => renderRelationChip(blocked, "blocks")).join("")}</div>`);
     }
     return parts.join("");
   }
@@ -437,34 +570,41 @@ export function createEditorModule(ctx) {
     if (!ticket) {
       return "";
     }
-    const priority = `<span class="status-pill">P${ticket.priority}</span>`;
+    const priority = `<span class="ticket-priority-label">Priority: ${ticket.priority}</span>`;
     const tags = ticket.tags
       .map((tag) => `<span class="tag" style="background:${ctx.escapeHtml(tag.color)}">${ctx.escapeHtml(tag.name)}</span>`)
       .join("");
-    const blockedBy = ticket.blockers.length
-      ? ticket.blockers
-          .map(
-            (blocker) =>
-              `<span class="status-pill">blocked by #${blocker.id}${blocker.priority ? ` P${blocker.priority}` : ""}</span>`,
-          )
-          .join("")
-      : "";
-    const blocking = getBoardTickets()
-      .filter((candidate) => candidate.id !== ticket.id && candidate.blockerIds.includes(ticket.id))
-      .map(
-        (blockedTicket) =>
-          `<span class="status-pill">blocks #${blockedTicket.id}${blockedTicket.priority ? ` P${blockedTicket.priority}` : ""}</span>`,
-      )
-      .join("");
-    const completed = ticket.isCompleted ? '<span class="status-pill">Completed</span>' : '<span class="status-pill">Open</span>';
-    return `${completed}${priority}${blockedBy}${blocking}${tags}`;
+    return `
+      <div class="ticket-meta-row">${priority}${tags}</div>
+    `;
+  }
+
+  function syncEditorHeader(ticket) {
+    if (!ticket) {
+      elements.editorHeaderState.hidden = true;
+      elements.editorHeaderId.textContent = "";
+      elements.editorTitle.textContent = "New Ticket";
+      elements.headerEditButton.hidden = true;
+      return;
+    }
+    elements.editorHeaderState.hidden = false;
+    elements.editorHeaderState.textContent = ticket.isCompleted ? "Completed" : "Open";
+    elements.editorHeaderState.className = `ticket-state-pill ${ticket.isCompleted ? "ticket-state-pill-completed" : "ticket-state-pill-open"}`;
+    elements.editorHeaderId.textContent = `#${ticket.id}`;
+    elements.editorTitle.textContent = ticket.title;
+    elements.headerEditButton.hidden = state.dialogMode !== "view";
+  }
+
+  function syncTicketRelations(ticket) {
+    const relationsHtml = renderTicketRelations(ticket);
+    elements.ticketRelations.innerHTML = relationsHtml;
+    elements.ticketRelations.hidden = !relationsHtml;
   }
 
   function hydrateDialogTicket(ticket) {
-    elements.ticketViewId.textContent = `#${ticket.id}`;
-    elements.ticketViewTitle.textContent = ticket.title;
+    syncEditorHeader(ticket);
     elements.ticketViewMeta.innerHTML = renderTicketMeta(ticket);
-    elements.ticketRelations.innerHTML = renderTicketRelations(ticket);
+    syncTicketRelations(ticket);
     elements.ticketViewBody.innerHTML = ticket.bodyHtml || '<p class="muted">No description</p>';
     elements.ticketComments.innerHTML = renderComments(ticket.comments ?? []);
     elements.ticketTitle.value = ticket.title;
@@ -478,11 +618,14 @@ export function createEditorModule(ctx) {
     state.editorChildIds = ticket.children.map((child) => child.id);
     state.editorOriginalChildIds = [...state.editorChildIds];
     state.tagQuery = "";
+    state.parentQuery = "";
     state.blockerQuery = "";
     state.childQuery = "";
     elements.ticketTagSearch.value = "";
+    elements.ticketParentSearch.value = "";
     elements.ticketBlockerSearch.value = "";
     elements.ticketChildSearch.value = "";
+    syncParentOptions();
     syncTicketTagOptions();
     syncBlockerOptions();
     syncChildPickerAvailability();
@@ -495,15 +638,13 @@ export function createEditorModule(ctx) {
     }
     state.editingTicketId = ticketId;
     const ticket = ticketId ? await ctx.api(`/api/tickets/${ticketId}`) : null;
-    elements.editorTitle.textContent = ticketId ? "Ticket" : "New Ticket";
     elements.ticketTitle.value = ticket?.title ?? "";
     elements.ticketPriority.value = String(ticket?.priority ?? 0);
     elements.ticketCompleted.checked = ticket?.isCompleted ?? false;
     elements.ticketBody.value = ticket?.bodyMarkdown ?? "";
-    elements.ticketViewId.textContent = ticket ? `#${ticket.id}` : "";
-    elements.ticketViewTitle.textContent = ticket?.title ?? "";
+    syncEditorHeader(ticket);
     elements.ticketViewMeta.innerHTML = renderTicketMeta(ticket);
-    elements.ticketRelations.innerHTML = renderTicketRelations(ticket);
+    syncTicketRelations(ticket);
     elements.ticketViewBody.innerHTML = ticket?.bodyHtml ?? '<p class="muted">No description</p>';
     elements.ticketComments.innerHTML = renderComments(ticket?.comments ?? []);
     elements.commentBody.value = "";
@@ -511,17 +652,8 @@ export function createEditorModule(ctx) {
     elements.ticketLane.innerHTML = state.boardDetail.lanes
       .map((lane) => `<option value="${lane.id}" ${selectedLaneId === lane.id ? "selected" : ""}>${ctx.escapeHtml(lane.name)}</option>`)
       .join("");
-    const selectableParents = getBoardTickets().filter((entry) => entry.id !== ticketId && entry.parentTicketId == null);
-    elements.ticketParent.innerHTML =
-      '<option value="">No parent</option>' +
-      selectableParents
-        .map(
-          (entry) =>
-            `<option value="${entry.id}" ${ticket?.parentTicketId === entry.id ? "selected" : ""}>#${entry.id} P${entry.priority} ${ctx.escapeHtml(entry.title)}</option>`,
-        )
-        .join("");
+    elements.ticketParent.value = ticket?.parentTicketId == null ? "" : String(ticket.parentTicketId);
     elements.deleteTicketButton.hidden = !ticketId;
-    elements.editTicketButton.hidden = !ticketId;
     elements.commentForm.hidden = !ticketId;
     elements.ticketCompletedRow.hidden = !ticketId;
     if (!ticketId && defaultLaneId != null) {
@@ -532,12 +664,15 @@ export function createEditorModule(ctx) {
     state.editorChildIds = ticket?.children.map((entry) => entry.id) ?? [];
     state.editorOriginalChildIds = [...state.editorChildIds];
     state.tagQuery = "";
+    state.parentQuery = "";
     state.blockerQuery = "";
     state.childQuery = "";
     elements.ticketTagSearch.value = "";
+    elements.ticketParentSearch.value = "";
     elements.ticketBlockerSearch.value = "";
     elements.ticketChildSearch.value = "";
     elements.ticketChildrenRow.hidden = !ticketId;
+    syncParentOptions();
     syncTicketTagOptions();
     syncBlockerOptions();
     syncChildPickerAvailability();
@@ -679,7 +814,14 @@ export function createEditorModule(ctx) {
       toggleChild(Number(childOption.dataset.childId));
       return;
     }
+    const parentOption = event.target.closest?.("[data-parent-id]");
+    if (parentOption && elements.ticketParentOptions.contains(parentOption)) {
+      setParent(Number(parentOption.dataset.parentId));
+      return;
+    }
     if (
+      elements.ticketParentToggle.contains(event.target) ||
+      elements.ticketParentOptions.contains(event.target) ||
       elements.ticketTagToggle.contains(event.target) ||
       elements.ticketTagOptions.contains(event.target) ||
       elements.ticketBlockerToggle.contains(event.target) ||
@@ -689,6 +831,7 @@ export function createEditorModule(ctx) {
     ) {
       return;
     }
+    closeParentOptions();
     closeTicketTagOptions();
     closeBlockerOptions();
     closeChildOptions();
@@ -709,7 +852,11 @@ export function createEditorModule(ctx) {
       elements.uxError.textContent = `${label} is required`;
       return;
     }
-    finishUxDialog(values);
+    finishUxDialog({ action: "submit", values });
+  }
+
+  function handleUxDanger() {
+    finishUxDialog({ action: "danger" });
   }
 
   function finishUxDialog(value) {
@@ -724,7 +871,7 @@ export function createEditorModule(ctx) {
     resolver(value);
   }
 
-  function openUxDialog({ title, message = "", submitLabel, fields }) {
+  function openUxDialog({ title, message = "", submitLabel, fields, dangerLabel = "" }) {
     return new Promise((resolve) => {
       state.uxResolver = resolve;
       state.uxMode = "form";
@@ -732,6 +879,8 @@ export function createEditorModule(ctx) {
       elements.uxMessage.hidden = !message;
       elements.uxMessage.textContent = message;
       elements.uxSubmitButton.textContent = submitLabel;
+      elements.uxDangerButton.hidden = !dangerLabel;
+      elements.uxDangerButton.textContent = dangerLabel || "Delete";
       elements.uxError.hidden = true;
       elements.uxError.textContent = "";
       elements.uxFields.innerHTML = fields
@@ -757,6 +906,10 @@ export function createEditorModule(ctx) {
   }
 
   function requestFields(config) {
+    return openUxDialog(config).then((result) => (result?.action === "submit" ? result.values : null));
+  }
+
+  function requestFieldsAction(config) {
     return openUxDialog(config);
   }
 
@@ -768,6 +921,7 @@ export function createEditorModule(ctx) {
       elements.uxMessage.hidden = false;
       elements.uxMessage.textContent = message;
       elements.uxSubmitButton.textContent = submitLabel;
+      elements.uxDangerButton.hidden = true;
       elements.uxError.hidden = true;
       elements.uxFields.innerHTML = "";
       elements.uxDialog.showModal();
@@ -804,6 +958,7 @@ export function createEditorModule(ctx) {
     addComment,
     closeEditor,
     confirmAndRun,
+    createTagFromEditor,
     deleteTicket,
     finishUxDialog,
     handleBlockerFieldClick,
@@ -815,15 +970,21 @@ export function createEditorModule(ctx) {
     handleDocumentClick,
     handleEditorDialogClose,
     handleParentChange,
+    handleParentFieldClick,
+    handleParentSearchInput,
+    handleParentSearchKeydown,
     handleTicketTagSearchInput,
     handleTicketTagSearchKeydown,
     handleTicketTagFieldClick,
+    handleUxDanger,
     handleUxSubmit,
     openBlockerOptions,
     openChildOptions,
     openEditor,
+    openParentOptions,
     openTicketTagOptions,
     requestFields,
+    requestFieldsAction,
     saveTicket,
     setDialogMode,
     showToast,
