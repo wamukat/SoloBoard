@@ -1166,7 +1166,6 @@ button:hover,
   box-shadow: 0 16px 34px rgba(38, 35, 28, 0.16);
 }
 
-.ticket-view-meta,
 .editor-actions-right {
   display: flex;
   align-items: center;
@@ -1174,6 +1173,13 @@ button:hover,
   flex-wrap: wrap;
   justify-content: flex-end;
   margin-left: auto;
+}
+
+.ticket-view-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .editor-dialog-heading {

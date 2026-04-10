@@ -632,6 +632,7 @@ const editorModule = createEditorModule({
   elements,
   api,
   confirmAndRun,
+  escapeHtml,
   ensureEditorDialogPosition,
   requestFields,
   refreshBoardDetail,
