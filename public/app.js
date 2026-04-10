@@ -1,3 +1,4 @@
+import { api, createSendJson } from "./app-api.js";
 import { createBoardModule } from "./app-board.js";
 import { createEditorModule } from "./app-editor.js";
 import { createUxModule } from "./app-ux.js";
@@ -584,13 +585,6 @@ function syncTicketUrl(ticketId, { replace = false } = {}) {
   setUrl(`/tickets/${ticketId}`, { replace });
 }
 
-async function sendJson(url, { method, body }) {
-  return api(url, {
-    method,
-    body: JSON.stringify(body),
-  });
-}
-
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -600,23 +594,7 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-async function api(url, init = {}) {
-  const response = await fetch(url, {
-    headers: {
-      "content-type": "application/json",
-      ...(init.headers ?? {}),
-    },
-    ...init,
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: response.statusText }));
-    throw new Error(payload.error ?? response.statusText);
-  }
-  if (response.status === 204) {
-    return null;
-  }
-  return response.json();
-}
+const sendJson = createSendJson(api);
 
 const uxModule = createUxModule({
   state,

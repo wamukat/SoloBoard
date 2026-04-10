@@ -609,6 +609,11 @@ button:hover,
   box-shadow: var(--shadow);
 }
 
+.editor-mode .ticket-tag-options {
+  position: static;
+  margin-top: 0.35rem;
+}
+
 .tag-picker-empty {
   color: var(--muted);
   font-size: 0.86rem;

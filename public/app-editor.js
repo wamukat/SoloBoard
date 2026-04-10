@@ -1,4 +1,6 @@
 import { icon } from "./icons.js";
+import { createTicketRelationPicker } from "./app-ticket-relation-picker.js";
+import { createTicketTagPicker } from "./app-ticket-tag-picker.js";
 
 export function createEditorModule(ctx) {
   const { state, elements } = ctx;
@@ -48,10 +50,6 @@ export function createEditorModule(ctx) {
     return idText.includes(normalized) || hashText.includes(normalized) || ticket.title.toLowerCase().includes(normalized);
   }
 
-  function renderTagSummaryChip(tag) {
-    return `<button type="button" class="ticket-tag-chip" data-remove-tag-id="${tag.id}" style="background:${ctx.escapeHtml(tag.color)}" title="Remove ${ctx.escapeHtml(tag.name)}">${ctx.escapeHtml(tag.name)} ${icon("x")}</button>`;
-  }
-
   function renderTicketSummaryChip(ticket, removeAttr) {
     return `<button type="button" class="ticket-tag-chip ticket-ref-chip" ${removeAttr}="${ticket.id}" title="Remove ${ctx.escapeHtml(formatTicketChoice(ticket))}"><span class="ticket-ref-chip-id">#${ticket.id}</span><span class="ticket-ref-chip-text">${ctx.escapeHtml(ticket.title)}</span>${icon("x")}</button>`;
   }
@@ -64,68 +62,6 @@ export function createEditorModule(ctx) {
         <span class="ticket-picker-meta">P${ticket.priority}${ticket.isCompleted ? " Done" : ""}</span>
       </button>
     `;
-  }
-
-  function selectFirstOption(optionContainer, selector, onSelect, event) {
-    const firstOption = optionContainer.querySelector(selector);
-    if (!firstOption) {
-      return false;
-    }
-    event?.preventDefault?.();
-    onSelect(firstOption);
-    return true;
-  }
-
-  function handlePickerOptionClick(event, optionContainer, selector, onSelect) {
-    const option = event.target.closest?.(selector);
-    if (!option || !optionContainer.contains(option)) {
-      return false;
-    }
-    onSelect(option);
-    return true;
-  }
-
-  function syncTicketTagOptions() {
-    if (!state.boardDetail) {
-      return;
-    }
-    const availableTagIds = new Set(state.boardDetail.tags.map((tag) => tag.id));
-    state.editorTagIds = state.editorTagIds.filter((id) => availableTagIds.has(id));
-    const selectedTags = state.boardDetail.tags.filter((tag) => state.editorTagIds.includes(tag.id));
-    elements.ticketTagSummary.innerHTML = selectedTags.length
-      ? selectedTags.map(renderTagSummaryChip).join("")
-      : '<span class="ticket-tag-placeholder">Add tags</span>';
-
-    if (state.boardDetail.tags.length === 0) {
-      elements.ticketTagOptions.innerHTML = '<div class="tag-picker-empty">No tags</div>';
-      return;
-    }
-
-    const query = state.tagQuery.trim().toLowerCase();
-    const visibleTags = state.boardDetail.tags.filter((tag) => {
-      if (state.editorTagIds.includes(tag.id)) {
-        return true;
-      }
-      if (!query) {
-        return true;
-      }
-      return tag.name.toLowerCase().includes(query);
-    });
-
-    elements.ticketTagOptions.innerHTML = visibleTags.length
-      ? visibleTags
-          .map((tag) => {
-            const isSelected = state.editorTagIds.includes(tag.id);
-            return `
-              <button type="button" class="tag-picker-item ${isSelected ? "selected" : ""}" data-tag-id="${tag.id}" role="option" aria-selected="${isSelected}">
-                <span class="tag-picker-swatch" style="background:${ctx.escapeHtml(tag.color)}"></span>
-                <span class="tag-picker-text">${ctx.escapeHtml(tag.name)}</span>
-                <span class="tag-picker-check" aria-hidden="true">${isSelected ? icon("check") : ""}</span>
-              </button>
-            `;
-          })
-          .join("")
-      : '<div class="tag-picker-empty">No matching tags</div>';
   }
 
   function getAvailableBlockerTickets() {
@@ -147,142 +83,14 @@ export function createEditorModule(ctx) {
       .sort((a, b) => b.priority - a.priority || a.id - b.id);
   }
 
-  function syncParentOptions() {
-    const selectedParent = getTicketById(getSelectedParentId());
-    elements.ticketParentSummary.innerHTML = selectedParent
-      ? renderTicketSummaryChip(selectedParent, "data-remove-parent-id")
-      : '<span class="ticket-tag-placeholder">No parent</span>';
-
-    const visibleTickets = getAvailableParentTickets().filter((ticket) => {
-      if (selectedParent?.id === ticket.id) {
-        return true;
-      }
-      return matchTicketQuery(ticket, state.parentQuery);
-    });
-
-    elements.ticketParentOptions.innerHTML = visibleTickets.length
-      ? visibleTickets.map((ticket) => renderTicketOption(ticket, "data-parent-id", selectedParent?.id === ticket.id)).join("")
-      : '<div class="tag-picker-empty">No matching tickets</div>';
-  }
-
-  function openParentOptions() {
-    closeTicketTagOptions();
-    closeBlockerOptions();
-    closeChildOptions();
-    elements.ticketParentOptions.hidden = false;
-    elements.ticketParentToggle.setAttribute("aria-expanded", "true");
-  }
-
-  function closeParentOptions() {
-    elements.ticketParentOptions.hidden = true;
-    elements.ticketParentToggle.setAttribute("aria-expanded", "false");
-  }
-
-  function handleParentFieldClick(event) {
-    const removeButton = event.target.closest("[data-remove-parent-id]");
-    if (removeButton) {
-      event.preventDefault();
-      setParent(null);
-      return;
-    }
-    openParentOptions();
-    elements.ticketParentSearch.focus();
-  }
-
-  function handleParentSearchInput(event) {
-    state.parentQuery = event.target.value;
-    openParentOptions();
-    syncParentOptions();
-  }
-
-  function handleParentSearchKeydown(event) {
-    if (event.key === "Backspace" && !elements.ticketParentSearch.value && getSelectedParentId() != null) {
-      event.preventDefault();
-      setParent(null);
-      return;
-    }
-    if (event.key === "Enter") {
-      selectFirstOption(elements.ticketParentOptions, "[data-parent-id]", (option) => setParent(Number(option.dataset.parentId)), event);
-      return;
-    }
-    if (event.key === "Escape") {
-      closeParentOptions();
-      elements.ticketParentSearch.blur();
-    }
-  }
-
   function setParent(ticketId) {
     elements.ticketParent.value = ticketId == null ? "" : String(ticketId);
     state.parentQuery = "";
     elements.ticketParentSearch.value = "";
-    syncParentOptions();
+    parentPicker.syncOptions();
     handleParentChange();
-    openParentOptions();
+    parentPicker.openOptions();
     elements.ticketParentSearch.focus();
-  }
-
-  function syncBlockerOptions() {
-    const selectedTickets = state.editorBlockerIds.map(getTicketById).filter(Boolean);
-    elements.ticketBlockerSummary.innerHTML = selectedTickets.length
-      ? selectedTickets.map((ticket) => renderTicketSummaryChip(ticket, "data-remove-blocker-id")).join("")
-      : '<span class="ticket-tag-placeholder">Add blockers</span>';
-
-    const visibleTickets = getAvailableBlockerTickets().filter((ticket) => {
-      if (state.editorBlockerIds.includes(ticket.id)) {
-        return true;
-      }
-      return matchTicketQuery(ticket, state.blockerQuery);
-    });
-
-    elements.ticketBlockerOptions.innerHTML = visibleTickets.length
-      ? visibleTickets.map((ticket) => renderTicketOption(ticket, "data-blocker-id", state.editorBlockerIds.includes(ticket.id))).join("")
-      : '<div class="tag-picker-empty">No matching tickets</div>';
-  }
-
-  function openBlockerOptions() {
-    closeTicketTagOptions();
-    closeChildOptions();
-    elements.ticketBlockerOptions.hidden = false;
-    elements.ticketBlockerToggle.setAttribute("aria-expanded", "true");
-  }
-
-  function closeBlockerOptions() {
-    elements.ticketBlockerOptions.hidden = true;
-    elements.ticketBlockerToggle.setAttribute("aria-expanded", "false");
-  }
-
-  function handleBlockerFieldClick(event) {
-    const removeButton = event.target.closest("[data-remove-blocker-id]");
-    if (removeButton) {
-      event.preventDefault();
-      toggleBlocker(Number(removeButton.dataset.removeBlockerId));
-      return;
-    }
-    openBlockerOptions();
-    elements.ticketBlockerSearch.focus();
-  }
-
-  function handleBlockerSearchInput(event) {
-    state.blockerQuery = event.target.value;
-    openBlockerOptions();
-    syncBlockerOptions();
-  }
-
-  function handleBlockerSearchKeydown(event) {
-    if (event.key === "Backspace" && !elements.ticketBlockerSearch.value && state.editorBlockerIds.length > 0) {
-      event.preventDefault();
-      state.editorBlockerIds = state.editorBlockerIds.slice(0, -1);
-      syncBlockerOptions();
-      return;
-    }
-    if (event.key === "Enter") {
-      selectFirstOption(elements.ticketBlockerOptions, "[data-blocker-id]", (option) => toggleBlocker(Number(option.dataset.blockerId)), event);
-      return;
-    }
-    if (event.key === "Escape") {
-      closeBlockerOptions();
-      elements.ticketBlockerSearch.blur();
-    }
   }
 
   function toggleBlocker(ticketId) {
@@ -293,8 +101,8 @@ export function createEditorModule(ctx) {
     }
     state.blockerQuery = "";
     elements.ticketBlockerSearch.value = "";
-    syncBlockerOptions();
-    openBlockerOptions();
+    blockerPicker.syncOptions();
+    blockerPicker.openOptions();
     elements.ticketBlockerSearch.focus();
   }
 
@@ -314,83 +122,10 @@ export function createEditorModule(ctx) {
     elements.ticketChildSearch.disabled = !canEditChildren;
     elements.ticketChildToggle.classList.toggle("is-disabled", !canEditChildren);
     if (!canEditChildren) {
-      closeChildOptions();
+      childPicker.closeOptions();
       if (getSelectedParentId() != null) {
         state.editorChildIds = [];
       }
-    }
-  }
-
-  function syncChildOptions() {
-    const selectedTickets = state.editorChildIds.map(getTicketById).filter(Boolean);
-    elements.ticketChildSummary.innerHTML = selectedTickets.length
-      ? selectedTickets.map((ticket) => renderTicketSummaryChip(ticket, "data-remove-child-id")).join("")
-      : `<span class="ticket-tag-placeholder">${state.editingTicketId ? (getSelectedParentId() != null ? "Clear parent to edit children" : "Add children") : "Save ticket first"}</span>`;
-
-    if (!state.editingTicketId || getSelectedParentId() != null) {
-      elements.ticketChildOptions.innerHTML = '<div class="tag-picker-empty">Children cannot be edited while this ticket has a parent</div>';
-      return;
-    }
-
-    const visibleTickets = getAvailableChildTickets().filter((ticket) => {
-      if (state.editorChildIds.includes(ticket.id)) {
-        return true;
-      }
-      return matchTicketQuery(ticket, state.childQuery);
-    });
-
-    elements.ticketChildOptions.innerHTML = visibleTickets.length
-      ? visibleTickets.map((ticket) => renderTicketOption(ticket, "data-child-id", state.editorChildIds.includes(ticket.id))).join("")
-      : '<div class="tag-picker-empty">No matching tickets</div>';
-  }
-
-  function openChildOptions() {
-    if (!state.editingTicketId || getSelectedParentId() != null) {
-      return;
-    }
-    closeTicketTagOptions();
-    closeParentOptions();
-    closeBlockerOptions();
-    elements.ticketChildOptions.hidden = false;
-    elements.ticketChildToggle.setAttribute("aria-expanded", "true");
-  }
-
-  function closeChildOptions() {
-    elements.ticketChildOptions.hidden = true;
-    elements.ticketChildToggle.setAttribute("aria-expanded", "false");
-  }
-
-  function handleChildFieldClick(event) {
-    const removeButton = event.target.closest("[data-remove-child-id]");
-    if (removeButton) {
-      event.preventDefault();
-      toggleChild(Number(removeButton.dataset.removeChildId));
-      return;
-    }
-    openChildOptions();
-    elements.ticketChildSearch.focus();
-  }
-
-  function handleChildSearchInput(event) {
-    state.childQuery = event.target.value;
-    openChildOptions();
-    syncChildOptions();
-  }
-
-  function handleChildSearchKeydown(event) {
-    if (event.key === "Backspace" && !elements.ticketChildSearch.value && state.editorChildIds.length > 0) {
-      event.preventDefault();
-      state.editorChildIds = state.editorChildIds.slice(0, -1);
-      syncChildOptions();
-      return;
-    }
-    if (event.key === "Enter") {
-      selectFirstOption(elements.ticketChildOptions, "[data-child-id]", (option) => toggleChild(Number(option.dataset.childId)), event);
-      return;
-    }
-    if (event.key === "Escape") {
-      closeChildOptions();
-      elements.ticketChildSearch.blur();
     }
   }
 
@@ -402,100 +137,119 @@ export function createEditorModule(ctx) {
     }
     state.childQuery = "";
     elements.ticketChildSearch.value = "";
-    syncChildOptions();
-    openChildOptions();
+    childPicker.syncOptions();
+    childPicker.openOptions();
     elements.ticketChildSearch.focus();
   }
 
   function handleParentChange() {
     syncChildPickerAvailability();
-    syncChildOptions();
+    childPicker.syncOptions();
   }
 
-  function openTicketTagOptions() {
-    closeParentOptions();
-    closeBlockerOptions();
-    closeChildOptions();
-    elements.ticketTagOptions.hidden = false;
-    elements.ticketTagToggle.setAttribute("aria-expanded", "true");
-  }
+  let parentPicker;
+  let blockerPicker;
+  let childPicker;
 
-  function closeTicketTagOptions() {
-    elements.ticketTagOptions.hidden = true;
-    elements.ticketTagToggle.setAttribute("aria-expanded", "false");
-  }
+  const tagPicker = createTicketTagPicker({
+    ...ctx,
+    closePeerOptions: () => {
+      parentPicker.closeOptions();
+      blockerPicker.closeOptions();
+      childPicker.closeOptions();
+    },
+  });
 
-  function handleTicketTagFieldClick(event) {
-    const removeButton = event.target.closest("[data-remove-tag-id]");
-    if (removeButton) {
-      event.preventDefault();
-      toggleTicketTag(Number(removeButton.dataset.removeTagId));
-      return;
-    }
-    openTicketTagOptions();
-    elements.ticketTagSearch.focus();
-  }
+  const relationPickerContext = {
+    escapeHtml: ctx.escapeHtml,
+    getTicketById,
+    matchTicketQuery,
+    renderOption: renderTicketOption,
+    renderSummaryChip: renderTicketSummaryChip,
+  };
 
-  function handleTicketTagSearchInput(event) {
-    state.tagQuery = event.target.value;
-    openTicketTagOptions();
-    syncTicketTagOptions();
-  }
+  parentPicker = createTicketRelationPicker({
+    ...relationPickerContext,
+    optionAttr: "data-parent-id",
+    removeAttr: "data-remove-parent-id",
+    elements: {
+      toggle: elements.ticketParentToggle,
+      summary: elements.ticketParentSummary,
+      search: elements.ticketParentSearch,
+      options: elements.ticketParentOptions,
+    },
+    closePeerOptions: () => {
+      tagPicker.closeOptions();
+      blockerPicker.closeOptions();
+      childPicker.closeOptions();
+    },
+    getAvailableTickets: getAvailableParentTickets,
+    getPlaceholder: () => "No parent",
+    getQuery: () => state.parentQuery,
+    getSelectedTicketIds: () => {
+      const selectedParentId = getSelectedParentId();
+      return selectedParentId == null ? [] : [selectedParentId];
+    },
+    removeTicket: () => setParent(null),
+    selectTicket: setParent,
+    setQuery: (value) => {
+      state.parentQuery = value;
+    },
+  });
 
-  function handleTicketTagSearchKeydown(event) {
-    if (event.key === "Backspace" && !elements.ticketTagSearch.value && state.editorTagIds.length > 0) {
-      event.preventDefault();
-      state.editorTagIds = state.editorTagIds.slice(0, -1);
-      syncTicketTagOptions();
-      return;
-    }
-    if (event.key === "Enter") {
-      selectFirstOption(elements.ticketTagOptions, "[data-tag-id]", (option) => toggleTicketTag(Number(option.dataset.tagId)), event);
-      return;
-    }
-    if (event.key === "Escape") {
-      closeTicketTagOptions();
-      elements.ticketTagSearch.blur();
-    }
-  }
+  blockerPicker = createTicketRelationPicker({
+    ...relationPickerContext,
+    optionAttr: "data-blocker-id",
+    removeAttr: "data-remove-blocker-id",
+    elements: {
+      toggle: elements.ticketBlockerToggle,
+      summary: elements.ticketBlockerSummary,
+      search: elements.ticketBlockerSearch,
+      options: elements.ticketBlockerOptions,
+    },
+    closePeerOptions: () => {
+      tagPicker.closeOptions();
+      parentPicker.closeOptions();
+      childPicker.closeOptions();
+    },
+    getAvailableTickets: getAvailableBlockerTickets,
+    getPlaceholder: () => "Add blockers",
+    getQuery: () => state.blockerQuery,
+    getSelectedTicketIds: () => [...state.editorBlockerIds],
+    removeTicket: toggleBlocker,
+    selectTicket: toggleBlocker,
+    setQuery: (value) => {
+      state.blockerQuery = value;
+    },
+  });
 
-  function toggleTicketTag(tagId) {
-    if (state.editorTagIds.includes(tagId)) {
-      state.editorTagIds = state.editorTagIds.filter((id) => id !== tagId);
-    } else {
-      state.editorTagIds = [...state.editorTagIds, tagId];
-    }
-    state.tagQuery = "";
-    elements.ticketTagSearch.value = "";
-    syncTicketTagOptions();
-    openTicketTagOptions();
-    elements.ticketTagSearch.focus();
-  }
-
-  async function createTagFromEditor() {
-    if (!state.activeBoardId) {
-      return;
-    }
-    const values = await ctx.requestFields({
-      title: "New Tag",
-      submitLabel: "Create",
-      fields: [
-        { id: "name", label: "Name", required: true },
-        { id: "color", label: "Color", type: "color", value: "#2f7f6f", required: true },
-      ],
-    });
-    if (!values) {
-      return;
-    }
-    const created = await ctx.sendJson(`/api/boards/${state.activeBoardId}/tags`, {
-      method: "POST",
-      body: values,
-    });
-    await ctx.refreshBoardDetail();
-    state.editorTagIds = [...new Set([...state.editorTagIds, created.id])];
-    syncTicketTagOptions();
-    ctx.showToast("Tag created");
-  }
+  childPicker = createTicketRelationPicker({
+    ...relationPickerContext,
+    optionAttr: "data-child-id",
+    removeAttr: "data-remove-child-id",
+    elements: {
+      toggle: elements.ticketChildToggle,
+      summary: elements.ticketChildSummary,
+      search: elements.ticketChildSearch,
+      options: elements.ticketChildOptions,
+    },
+    canOpen: () => Boolean(state.editingTicketId) && getSelectedParentId() == null,
+    closePeerOptions: () => {
+      tagPicker.closeOptions();
+      parentPicker.closeOptions();
+      blockerPicker.closeOptions();
+    },
+    getAvailableTickets: getAvailableChildTickets,
+    getPlaceholder: () => (state.editingTicketId ? (getSelectedParentId() != null ? "Clear parent to edit children" : "Add children") : "Save ticket first"),
+    getQuery: () => state.childQuery,
+    getSelectedTicketIds: () => [...state.editorChildIds],
+    getUnavailableMessage: () => (!state.editingTicketId || getSelectedParentId() != null ? "Children cannot be edited while this ticket has a parent" : ""),
+    removeTicket: toggleChild,
+    selectTicket: toggleChild,
+    setQuery: (value) => {
+      state.childQuery = value;
+    },
+  });
 
   function setDialogMode(mode) {
     state.dialogMode = mode;
@@ -507,10 +261,10 @@ export function createEditorModule(ctx) {
     elements.commentsTabButton.hidden = mode !== "view";
     elements.activityTabButton.hidden = mode !== "view";
     if (mode !== "edit") {
-      closeParentOptions();
-      closeTicketTagOptions();
-      closeBlockerOptions();
-      closeChildOptions();
+      parentPicker.closeOptions();
+      tagPicker.closeOptions();
+      blockerPicker.closeOptions();
+      childPicker.closeOptions();
     }
   }
 
@@ -541,10 +295,10 @@ export function createEditorModule(ctx) {
     if (elements.editorDialog.open) {
       elements.editorDialog.close();
     }
-    closeParentOptions();
-    closeTicketTagOptions();
-    closeBlockerOptions();
-    closeChildOptions();
+    parentPicker.closeOptions();
+    tagPicker.closeOptions();
+    blockerPicker.closeOptions();
+    childPicker.closeOptions();
     ctx.syncBoardUrl();
   }
 
@@ -681,11 +435,11 @@ export function createEditorModule(ctx) {
     elements.ticketParentSearch.value = "";
     elements.ticketBlockerSearch.value = "";
     elements.ticketChildSearch.value = "";
-    syncParentOptions();
-    syncTicketTagOptions();
-    syncBlockerOptions();
+    parentPicker.syncOptions();
+    tagPicker.syncOptions();
+    blockerPicker.syncOptions();
     syncChildPickerAvailability();
-    syncChildOptions();
+    childPicker.syncOptions();
     setDetailTab("comments");
   }
 
@@ -745,11 +499,11 @@ export function createEditorModule(ctx) {
     elements.ticketChildSearch.value = "";
     elements.ticketChildrenRow.hidden = !ticketId;
     clearSaveState();
-    syncParentOptions();
-    syncTicketTagOptions();
-    syncBlockerOptions();
+    parentPicker.syncOptions();
+    tagPicker.syncOptions();
+    blockerPicker.syncOptions();
     syncChildPickerAvailability();
-    syncChildOptions();
+    childPicker.syncOptions();
     setDialogMode(ticketId ? mode : "edit");
     setDetailTab("comments");
     elements.editorDialog.showModal();
@@ -996,16 +750,16 @@ export function createEditorModule(ctx) {
     if (!elements.editorDialog.open) {
       return;
     }
-    if (handlePickerOptionClick(event, elements.ticketTagOptions, "[data-tag-id]", (option) => toggleTicketTag(Number(option.dataset.tagId)))) {
+    if (tagPicker.handleOptionClick(event)) {
       return;
     }
-    if (handlePickerOptionClick(event, elements.ticketBlockerOptions, "[data-blocker-id]", (option) => toggleBlocker(Number(option.dataset.blockerId)))) {
+    if (blockerPicker.handleOptionClick(event)) {
       return;
     }
-    if (handlePickerOptionClick(event, elements.ticketChildOptions, "[data-child-id]", (option) => toggleChild(Number(option.dataset.childId)))) {
+    if (childPicker.handleOptionClick(event)) {
       return;
     }
-    if (handlePickerOptionClick(event, elements.ticketParentOptions, "[data-parent-id]", (option) => setParent(Number(option.dataset.parentId)))) {
+    if (parentPicker.handleOptionClick(event)) {
       return;
     }
     if (
@@ -1020,42 +774,42 @@ export function createEditorModule(ctx) {
     ) {
       return;
     }
-    closeParentOptions();
-    closeTicketTagOptions();
-    closeBlockerOptions();
-    closeChildOptions();
+    parentPicker.closeOptions();
+    tagPicker.closeOptions();
+    blockerPicker.closeOptions();
+    childPicker.closeOptions();
   }
 
   return {
     addComment,
     closeEditor,
-    createTagFromEditor,
+    createTagFromEditor: tagPicker.createTagFromEditor,
     deleteTicket,
     handleCommentAction,
-    handleBlockerFieldClick,
-    handleBlockerSearchInput,
-    handleBlockerSearchKeydown,
-    handleChildFieldClick,
-    handleChildSearchInput,
-    handleChildSearchKeydown,
+    handleBlockerFieldClick: blockerPicker.handleFieldClick,
+    handleBlockerSearchInput: blockerPicker.handleSearchInput,
+    handleBlockerSearchKeydown: blockerPicker.handleSearchKeydown,
+    handleChildFieldClick: childPicker.handleFieldClick,
+    handleChildSearchInput: childPicker.handleSearchInput,
+    handleChildSearchKeydown: childPicker.handleSearchKeydown,
     handleDocumentClick,
     handleEditorDialogClose,
     handleParentChange,
-    handleParentFieldClick,
-    handleParentSearchInput,
-    handleParentSearchKeydown,
-    handleTicketTagSearchInput,
-    handleTicketTagSearchKeydown,
-    handleTicketTagFieldClick,
-    openBlockerOptions,
-    openChildOptions,
+    handleParentFieldClick: parentPicker.handleFieldClick,
+    handleParentSearchInput: parentPicker.handleSearchInput,
+    handleParentSearchKeydown: parentPicker.handleSearchKeydown,
+    handleTicketTagSearchInput: tagPicker.handleSearchInput,
+    handleTicketTagSearchKeydown: tagPicker.handleSearchKeydown,
+    handleTicketTagFieldClick: tagPicker.handleFieldClick,
+    openBlockerOptions: blockerPicker.openOptions,
+    openChildOptions: childPicker.openOptions,
     openEditor,
-    openParentOptions,
-    openTicketTagOptions,
+    openParentOptions: parentPicker.openOptions,
+    openTicketTagOptions: tagPicker.openOptions,
     saveTicket,
     setDetailTab,
     setDialogMode,
-    syncTicketTagOptions,
+    syncTicketTagOptions: tagPicker.syncOptions,
     toggleTicketArchive,
   };
 }
