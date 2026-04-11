@@ -204,6 +204,5 @@ pnpm test:e2e
 
 ## Remaining Work
 
-1. Add CI image build.
-2. Add registry publishing after release/version policy is decided.
-3. Add version and revision OCI labels from CI when images are published.
+1. Add registry publishing after release/version policy is decided.
+2. Add version and revision OCI labels from CI when images are published.
