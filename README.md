@@ -97,6 +97,12 @@ Build the image:
 docker build -t soloboard:local .
 ```
 
+Pull the published image:
+
+```bash
+docker pull ghcr.io/wamukat/soloboard:latest
+```
+
 Run with Docker:
 
 ```bash
@@ -104,7 +110,7 @@ mkdir -p data
 docker run --rm \
   -p 3000:3000 \
   -v "$PWD/data:/app/data" \
-  soloboard:local
+  ghcr.io/wamukat/soloboard:latest
 ```
 
 Run with Docker Compose:

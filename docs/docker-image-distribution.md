@@ -36,6 +36,12 @@ The Docker image should expose the following contract.
 | Default database file | `/app/data/soloboard.sqlite` |
 | Health endpoint | `GET /api/health` |
 
+Published image:
+
+```text
+ghcr.io/wamukat/soloboard
+```
+
 Supported environment variables:
 
 | Variable | Default | Purpose |
@@ -51,7 +57,7 @@ mkdir -p data
 docker run --rm \
   -p 3000:3000 \
   -v "$PWD/data:/app/data" \
-  soloboard:local
+  ghcr.io/wamukat/soloboard:latest
 ```
 
 When using a bind mount on Linux, the host directory must be writable by UID `1000`, the `node` user inside the image.
@@ -148,18 +154,17 @@ Add an image publishing workflow when the project is ready to publish images.
 
 Recommended registry:
 
-- GitHub Container Registry: `ghcr.io/<owner>/soloboard`
+- GitHub Container Registry: `ghcr.io/wamukat/soloboard`
 
 Recommended tags:
 
-- `latest` for the default branch.
-- `vX.Y.Z` for release tags.
-- short commit SHA for traceability.
+- `vX.Y.Z` from the Git tag, for example `v0.9.0`.
+- `X.Y.Z` from the semantic version, for example `0.9.0`.
+- `latest` for the newest released image.
 
 Recommended trigger policy:
 
 - Build on pull requests without pushing.
-- Push image on `main`.
 - Push versioned image on Git tags matching `v*`.
 
 Acceptance criteria:
@@ -204,5 +209,5 @@ pnpm test:e2e
 
 ## Remaining Work
 
-1. Add registry publishing after release/version policy is decided.
-2. Add version and revision OCI labels from CI when images are published.
+1. Confirm the first GHCR package visibility is public after the first publish.
+2. Add `linux/arm64` after native dependency compatibility is verified.
