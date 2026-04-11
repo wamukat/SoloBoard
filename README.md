@@ -90,6 +90,7 @@ http://127.0.0.1:3000
 ## Docker
 
 Detailed distribution design: [docs/docker-image-distribution.md](docs/docker-image-distribution.md)
+Release process: [docs/release.md](docs/release.md)
 
 Build the image:
 
