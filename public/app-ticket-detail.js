@@ -1,3 +1,5 @@
+import { icon } from "./icons.js";
+
 export function createTicketDetailModule(ctx) {
   const { state, elements } = ctx;
 
@@ -37,7 +39,9 @@ export function createTicketDetailModule(ctx) {
     elements.editorHeaderTitle.hidden = state.dialogMode !== "view";
     elements.headerEditButton.hidden = state.dialogMode !== "view";
     elements.archiveTicketButton.hidden = state.dialogMode !== "edit";
-    elements.archiveTicketButton.textContent = ticket.isArchived ? "Restore" : "Archive";
+    const archiveIcon = ticket.isArchived ? "rotate-ccw" : "archive";
+    const archiveLabel = ticket.isArchived ? "Restore" : "Archive";
+    elements.archiveTicketButton.innerHTML = `${icon(archiveIcon)}<span>${ctx.escapeHtml(archiveLabel)}</span>`;
   }
 
   function renderTicketMeta(ticket) {

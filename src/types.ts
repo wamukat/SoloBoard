@@ -3,6 +3,7 @@ export type Id = number;
 export type BoardRow = {
   id: Id;
   name: string;
+  position: number;
   created_at: string;
   updated_at: string;
 };
@@ -170,6 +171,7 @@ export type LaneView = {
 export type BoardView = {
   id: Id;
   name: string;
+  position: number;
   createdAt: string;
   updatedAt: string;
 };

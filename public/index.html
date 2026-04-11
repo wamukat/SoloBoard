@@ -14,6 +14,22 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#plus"></use></svg>
         </button>
 
+        <section id="sidebar-view-section" class="sidebar-section">
+          <div class="sidebar-section-head">
+            <h3>View</h3>
+          </div>
+          <div id="view-mode-toggle" class="filter-toggle sidebar-toggle" role="group" aria-label="View mode">
+            <button type="button" data-view-mode="kanban" class="active">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#columns-3"></use></svg>
+              <span>Kanban</span>
+            </button>
+            <button type="button" data-view-mode="list">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#list"></use></svg>
+              <span>List</span>
+            </button>
+          </div>
+        </section>
+
         <section id="sidebar-tag-section" class="sidebar-section" hidden>
           <div class="sidebar-section-head">
             <h3>Tags</h3>
@@ -25,19 +41,34 @@
         </section>
 
         <section id="sidebar-board-section" class="sidebar-section" hidden>
-          <div class="sidebar-section-head">
-            <h3>Board</h3>
+          <div class="sidebar-section-head sidebar-board-control">
+            <button id="board-settings-toggle-button" type="button" class="icon-button sidebar-board-settings-toggle" title="Board settings" aria-label="Board settings" aria-expanded="false" aria-controls="sidebar-board-actions-panel">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#settings"></use></svg>
+            </button>
           </div>
-          <div class="sidebar-board-actions">
-            <div class="sidebar-board-transfer">
-              <button id="export-board-button" type="button">Export</button>
-              <label class="import-button" title="Import board">
-                Import
-                <input id="import-board-input" type="file" accept="application/json" hidden />
-              </label>
+          <div id="sidebar-board-actions-panel" class="sidebar-board-actions-panel">
+            <h3 class="sidebar-board-panel-title">Board</h3>
+            <div class="sidebar-board-actions">
+              <div class="sidebar-board-transfer">
+                <button id="export-board-button" type="button" class="action-with-icon">
+                  <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#download"></use></svg>
+                  <span>Export</span>
+                </button>
+                <label class="import-button action-with-icon" title="Import board">
+                  <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#upload"></use></svg>
+                  <span>Import</span>
+                  <input id="import-board-input" type="file" accept="application/json" hidden />
+                </label>
+              </div>
+              <button id="rename-board-button" type="button" class="action-with-icon">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#pencil"></use></svg>
+                <span>Rename</span>
+              </button>
+              <button id="delete-board-button" type="button" class="danger action-with-icon">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#trash-2"></use></svg>
+                <span>Delete</span>
+              </button>
             </div>
-            <button id="rename-board-button" type="button">Rename</button>
-            <button id="delete-board-button" type="button" class="danger">Delete</button>
           </div>
         </section>
       </aside>
@@ -59,16 +90,6 @@
               <input id="search-input" type="search" placeholder="Search tickets" />
             </label>
             <div class="toolbar-filters">
-              <div id="view-mode-toggle" class="filter-toggle view-toggle" role="group" aria-label="View mode">
-                <button type="button" data-view-mode="kanban" class="active">
-                  <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#columns-3"></use></svg>
-                  <span>Kanban</span>
-                </button>
-                <button type="button" data-view-mode="list">
-                  <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#list"></use></svg>
-                  <span>List</span>
-                </button>
-              </div>
               <select id="lane-filter" hidden>
                 <option value="">All lanes</option>
               </select>
@@ -77,8 +98,8 @@
                 <span>Archived</span>
               </button>
               <div id="completed-filter" class="filter-toggle" role="group" aria-label="Completion filter">
-                <button type="button" data-value="" class="active">All</button>
-                <button type="button" data-value="false">Open</button>
+                <button type="button" data-value="">All</button>
+                <button type="button" data-value="false" class="active">Open</button>
                 <button type="button" data-value="true">Done</button>
               </div>
               <select id="tag-filter">
@@ -169,12 +190,14 @@
               <input id="ticket-priority" name="priority" type="number" step="1" value="0" />
             </label>
 
-             <label id="ticket-completed-row" class="checkbox">
+             <label id="ticket-completed-row" class="completion-toggle">
+              <span class="completion-toggle-label">Done</span>
               <input id="ticket-completed" name="isCompleted" type="checkbox" />
-              Completed
+              <span class="completion-toggle-control">
+                <span class="completion-switch" aria-hidden="true"></span>
+              </span>
             </label>
 
-            <button id="archive-ticket-button" type="button" class="ghost archive-ticket-button" hidden>Archive</button>
           </div>
 
           <div class="editor-field">
@@ -190,6 +213,8 @@
               <div id="ticket-tag-options" class="ticket-tag-options" hidden></div>
             </div>
           </div>
+
+          <div class="editor-field-label editor-section-label">Relations</div>
 
           <div class="ticket-tag-field">
             <div id="ticket-blocker-toggle" class="ticket-tag-input" role="combobox" aria-haspopup="listbox" aria-expanded="false">
@@ -220,6 +245,10 @@
             <button id="delete-ticket-button" type="button" class="danger action-with-icon">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#trash-2"></use></svg>
               <span>Delete</span>
+            </button>
+            <button id="archive-ticket-button" type="button" class="ghost archive-ticket-button action-with-icon" hidden>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#archive"></use></svg>
+              <span>Archive</span>
             </button>
             <div class="editor-actions-right">
               <button id="cancel-edit-button" type="button" class="ghost">Cancel</button>

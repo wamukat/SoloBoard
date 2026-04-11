@@ -176,7 +176,7 @@ export function createEditorModule(ctx) {
       childPicker.closeOptions();
     },
     getAvailableTickets: getAvailableParentTickets,
-    getPlaceholder: () => "No parent",
+    getPlaceholder: () => "",
     getQuery: () => state.parentQuery,
     getSelectedTicketIds: () => {
       const selectedParentId = getSelectedParentId();
@@ -205,7 +205,7 @@ export function createEditorModule(ctx) {
       childPicker.closeOptions();
     },
     getAvailableTickets: getAvailableBlockerTickets,
-    getPlaceholder: () => "Add blockers",
+    getPlaceholder: () => "",
     getQuery: () => state.blockerQuery,
     getSelectedTicketIds: () => [...state.editorBlockerIds],
     removeTicket: toggleBlocker,
@@ -232,7 +232,7 @@ export function createEditorModule(ctx) {
       blockerPicker.closeOptions();
     },
     getAvailableTickets: getAvailableChildTickets,
-    getPlaceholder: () => (state.editingTicketId ? (getSelectedParentId() != null ? "Clear parent to edit children" : "Add children") : "Save ticket first"),
+    getPlaceholder: () => (state.editingTicketId ? (getSelectedParentId() != null ? "Clear parent to edit children" : "") : "Save ticket first"),
     getQuery: () => state.childQuery,
     getSelectedTicketIds: () => [...state.editorChildIds],
     getUnavailableMessage: () => (!state.editingTicketId || getSelectedParentId() != null ? "Children cannot be edited while this ticket has a parent" : ""),

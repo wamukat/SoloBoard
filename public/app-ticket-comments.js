@@ -10,15 +10,25 @@ export function createTicketCommentsModule(ctx) {
     return comments
       .map(
         (comment) => `
-          <article class="comment-item">
+          <article class="comment-item" data-comment-id="${comment.id}">
             <div class="comment-meta muted">
               <span>#${comment.id} ${new Date(comment.createdAt).toLocaleString()}</span>
               <span class="comment-actions">
-                <button type="button" class="ghost icon-button" data-edit-comment-id="${comment.id}" title="Edit comment" aria-label="Edit comment">${icon("pencil")}</button>
-                <button type="button" class="ghost icon-button danger" data-delete-comment-id="${comment.id}" title="Delete comment" aria-label="Delete comment">${icon("trash-2")}</button>
+                <button type="button" class="ghost icon-button action-menu-toggle" data-toggle-comment-actions title="Comment actions" aria-label="Comment actions" aria-expanded="false">${icon("ellipsis")}</button>
+                <span class="inline-action-menu" hidden>
+                  <button type="button" class="ghost icon-button" data-edit-comment-id="${comment.id}" title="Edit comment" aria-label="Edit comment">${icon("pencil")}</button>
+                  <button type="button" class="ghost icon-button danger" data-delete-comment-id="${comment.id}" title="Delete comment" aria-label="Delete comment">${icon("trash-2")}</button>
+                </span>
               </span>
             </div>
-            <div class="markdown">${comment.bodyHtml}</div>
+            <div class="markdown comment-display">${comment.bodyHtml}</div>
+            <form class="comment-edit-form" data-comment-edit-form hidden>
+              <textarea data-comment-edit-body rows="5" aria-label="Comment">${ctx.escapeHtml(comment.bodyMarkdown)}</textarea>
+              <div class="comment-edit-actions">
+                <button type="button" class="ghost" data-cancel-comment-edit>Cancel</button>
+                <button type="button" class="primary-action" data-save-comment-id="${comment.id}">Save</button>
+              </div>
+            </form>
           </article>
         `,
       )
@@ -55,9 +65,27 @@ export function createTicketCommentsModule(ctx) {
   }
 
   async function handleCommentAction(event) {
+    const toggleButton = event.target.closest("[data-toggle-comment-actions]");
+    if (toggleButton) {
+      toggleCommentActions(toggleButton);
+      return;
+    }
+
     const editButton = event.target.closest("[data-edit-comment-id]");
     if (editButton) {
-      await editComment(Number(editButton.dataset.editCommentId));
+      editCommentInline(editButton);
+      return;
+    }
+
+    const cancelButton = event.target.closest("[data-cancel-comment-edit]");
+    if (cancelButton) {
+      cancelCommentInlineEdit(cancelButton);
+      return;
+    }
+
+    const saveButton = event.target.closest("[data-save-comment-id]");
+    if (saveButton) {
+      await saveCommentInline(saveButton);
       return;
     }
 
@@ -67,25 +95,72 @@ export function createTicketCommentsModule(ctx) {
     }
   }
 
-  async function editComment(commentId) {
+  function toggleCommentActions(toggleButton) {
+    const menu = toggleButton.parentElement?.querySelector(".inline-action-menu");
+    if (!menu) {
+      return;
+    }
+    const isExpanded = toggleButton.getAttribute("aria-expanded") === "true";
+    toggleButton.setAttribute("aria-expanded", String(!isExpanded));
+    menu.hidden = false;
+    menu.classList.toggle("expanded", !isExpanded);
+    menu.toggleAttribute("inert", isExpanded);
+    if (isExpanded) {
+      window.setTimeout(() => {
+        if (!menu.classList.contains("expanded")) {
+          menu.hidden = true;
+        }
+      }, 180);
+    }
+  }
+
+  function editCommentInline(editButton) {
+    const item = editButton.closest(".comment-item");
+    if (!item) {
+      return;
+    }
+    const toggleButton = item.querySelector("[data-toggle-comment-actions]");
+    const menu = item.querySelector(".inline-action-menu");
+    toggleButton?.setAttribute("aria-expanded", "false");
+    menu?.classList.remove("expanded");
+    menu?.toggleAttribute("inert", true);
+    if (menu) {
+      menu.hidden = true;
+    }
+    item.querySelector(".comment-display").hidden = true;
+    const form = item.querySelector("[data-comment-edit-form]");
+    form.hidden = false;
+    form.querySelector("[data-comment-edit-body]")?.focus();
+  }
+
+  function cancelCommentInlineEdit(cancelButton) {
+    const item = cancelButton.closest(".comment-item");
+    if (!item) {
+      return;
+    }
+    const form = item.querySelector("[data-comment-edit-form]");
+    const textarea = item.querySelector("[data-comment-edit-body]");
+    if (textarea) {
+      textarea.value = textarea.defaultValue;
+    }
+    form.hidden = true;
+    item.querySelector(".comment-display").hidden = false;
+  }
+
+  async function saveCommentInline(saveButton) {
+    const item = saveButton.closest(".comment-item");
+    const textarea = item?.querySelector("[data-comment-edit-body]");
+    const bodyMarkdown = textarea?.value.trim() ?? "";
+    if (!bodyMarkdown) {
+      ctx.showToast("Comment is required", "error");
+      return;
+    }
     try {
-      const ticket = await ctx.api(`/api/tickets/${state.editingTicketId}`);
-      const current = (ticket.comments ?? []).find((comment) => comment.id === commentId);
-      if (!current) {
-        throw new Error("Comment not found");
-      }
-      const values = await ctx.requestFields({
-        title: "Edit Comment",
-        submitLabel: "Save",
-        fields: [{ id: "bodyMarkdown", label: "Comment", type: "textarea", rows: 8, value: current.bodyMarkdown, required: true }],
-      });
-      if (!values) {
-        return;
-      }
+      saveButton.disabled = true;
       ctx.setSaveState("saving", "Saving...");
-      await ctx.sendJson(`/api/comments/${commentId}`, {
+      await ctx.sendJson(`/api/comments/${saveButton.dataset.saveCommentId}`, {
         method: "PATCH",
-        body: { bodyMarkdown: values.bodyMarkdown },
+        body: { bodyMarkdown },
       });
       await ctx.refreshDialogTicket();
       await ctx.refreshBoardDetail();
@@ -93,6 +168,8 @@ export function createTicketCommentsModule(ctx) {
     } catch (error) {
       ctx.setSaveState("error", "Save failed");
       ctx.showToast(error.message, "error");
+    } finally {
+      saveButton.disabled = false;
     }
   }
 

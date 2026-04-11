@@ -14,12 +14,48 @@ export function createBoardModule(ctx) {
     for (const board of state.boards) {
       const button = document.createElement("button");
       button.className = `board-button ${board.id === state.activeBoardId ? "active" : ""}`;
+      button.draggable = true;
+      button.dataset.boardId = String(board.id);
       button.textContent = board.name;
       button.addEventListener("click", async () => {
+        cancelBoardCreate();
+        cancelLaneCreate();
         await ctx.selectBoard(board.id);
       });
+      bindBoardDrag(button);
       elements.boardList.append(button);
     }
+    if (state.isCreatingBoard) {
+      elements.boardList.append(createBoardInputRow());
+    }
+    elements.newBoardButton.hidden = state.isCreatingBoard;
+  }
+
+  function createBoardInputRow() {
+    return createInlineTextForm({
+      className: "board-create-row",
+      html: '<input type="text" data-board-create-input aria-label="Board name" placeholder="Board name" autocomplete="off" />',
+      inputSelector: "[data-board-create-input]",
+      onSubmit: submitBoardCreate,
+      onCancel: cancelBoardCreate,
+    });
+  }
+
+  function bindBoardDrag(button) {
+    button.addEventListener("dragstart", (event) => {
+      state.activeBoardDragId = Number(button.dataset.boardId);
+      button.classList.add("dragging-board");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", button.dataset.boardId);
+    });
+    button.addEventListener("dragend", async () => {
+      if (state.activeBoardDragId == null) {
+        return;
+      }
+      button.classList.remove("dragging-board");
+      state.activeBoardDragId = null;
+      await persistBoardOrder();
+    });
   }
 
   function renderBoardDetail() {
@@ -28,6 +64,9 @@ export function createBoardModule(ctx) {
       elements.boardTitle.textContent = "No board selected";
       elements.sidebarTagSection.hidden = true;
       elements.sidebarBoardSection.hidden = true;
+      state.boardSettingsExpanded = false;
+      state.isCreatingLane = false;
+      syncBoardSettingsPanel();
       elements.tagFilter.innerHTML = '<option value="">All tags</option>';
       elements.laneFilter.innerHTML = '<option value="">All lanes</option>';
       elements.laneBoard.className = "lane-board empty";
@@ -45,6 +84,7 @@ export function createBoardModule(ctx) {
     elements.boardTitle.textContent = detail.board.name;
     elements.sidebarTagSection.hidden = false;
     elements.sidebarBoardSection.hidden = false;
+    syncBoardSettingsPanel();
     renderSidebarTags();
     elements.tagFilter.innerHTML =
       '<option value="">All tags</option>' +
@@ -93,8 +133,11 @@ export function createBoardModule(ctx) {
           <span class="lane-count">${laneTickets.length}</span>
         </div>
         <div class="lane-actions">
-          <button type="button" class="icon-button" data-action="rename-lane" title="Rename lane" aria-label="Rename lane">${icon("pencil")}</button>
-          <button type="button" class="icon-button danger" data-action="delete-lane" title="Delete lane" aria-label="Delete lane">${icon("trash-2")}</button>
+          <button type="button" class="icon-button action-menu-toggle" data-action="toggle-lane-actions" title="Lane actions" aria-label="Lane actions" aria-expanded="false">${icon("ellipsis")}</button>
+          <span class="inline-action-menu" hidden>
+            <button type="button" class="icon-button" data-action="rename-lane" title="Rename lane" aria-label="Rename lane">${icon("pencil")}</button>
+            <button type="button" class="icon-button danger" data-action="delete-lane" title="Delete lane" aria-label="Delete lane">${icon("trash-2")}</button>
+          </span>
         </div>
       `;
 
@@ -113,6 +156,9 @@ export function createBoardModule(ctx) {
 
       header.querySelector("[data-action='rename-lane']").addEventListener("click", () => renameLane(lane));
       header.querySelector("[data-action='delete-lane']").addEventListener("click", () => deleteLane(lane));
+      header.querySelector("[data-action='toggle-lane-actions']").addEventListener("click", (event) => {
+        toggleInlineActionMenu(event.currentTarget);
+      });
       bindLaneDrag(header.querySelector("[data-action='drag-lane']"), laneElement);
 
       laneElement.append(header, list, addTicketButton);
@@ -121,15 +167,83 @@ export function createBoardModule(ctx) {
     }
 
     const addLaneButton = document.createElement("button");
-    addLaneButton.type = "button";
-    addLaneButton.className = "add-lane-button icon-button";
-    addLaneButton.innerHTML = icon("plus");
-    addLaneButton.title = "New lane";
-    addLaneButton.setAttribute("aria-label", "New lane");
-    addLaneButton.addEventListener("click", createLane);
-    elements.laneBoard.append(addLaneButton);
+    if (state.isCreatingLane) {
+      elements.laneBoard.append(createLaneInputColumn());
+    } else {
+      addLaneButton.type = "button";
+      addLaneButton.className = "add-lane-button icon-button";
+      addLaneButton.innerHTML = icon("plus");
+      addLaneButton.title = "New lane";
+      addLaneButton.setAttribute("aria-label", "New lane");
+      addLaneButton.addEventListener("click", createLane);
+      elements.laneBoard.append(addLaneButton);
+    }
 
     renderKanbanTicketsInBatches(renderToken, laneQueues);
+  }
+
+  function createLaneInputColumn() {
+    return createInlineTextForm({
+      className: "lane lane-create-column",
+      html: `
+        <label class="lane-create-label" for="lane-create-input">New lane</label>
+        <input id="lane-create-input" type="text" data-lane-create-input aria-label="Lane name" placeholder="Lane name" autocomplete="off" />
+      `,
+      inputSelector: "[data-lane-create-input]",
+      onSubmit: submitLaneCreate,
+      onCancel: cancelLaneCreate,
+    });
+  }
+
+  function createInlineTextForm({ className, html, inputSelector, onSubmit, onCancel }) {
+    const form = document.createElement("form");
+    form.className = className;
+    form.innerHTML = html;
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await onSubmit(form.querySelector(inputSelector));
+    });
+    form.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      onCancel();
+    });
+    form.addEventListener("focusout", () => {
+      window.setTimeout(() => {
+        const input = form.querySelector(inputSelector);
+        if (!form.contains(document.activeElement) && !input?.value.trim()) {
+          onCancel();
+        }
+      });
+    });
+
+    requestAnimationFrame(() => {
+      form.querySelector(inputSelector)?.focus();
+    });
+
+    return form;
+  }
+
+  function toggleInlineActionMenu(toggleButton) {
+    const menu = toggleButton.parentElement?.querySelector(".inline-action-menu");
+    if (!menu) {
+      return;
+    }
+    const isExpanded = toggleButton.getAttribute("aria-expanded") === "true";
+    toggleButton.setAttribute("aria-expanded", String(!isExpanded));
+    menu.hidden = false;
+    menu.classList.toggle("expanded", !isExpanded);
+    menu.toggleAttribute("inert", isExpanded);
+    if (isExpanded) {
+      window.setTimeout(() => {
+        if (!menu.classList.contains("expanded")) {
+          menu.hidden = true;
+        }
+      }, 180);
+    }
   }
 
   function renderListBoard(detail) {
@@ -145,18 +259,16 @@ export function createBoardModule(ctx) {
     const visibleTicketIds = orderedTickets.map(({ ticket }) => ticket.id);
     const allSelected = visibleTicketIds.length > 0 && visibleTicketIds.every((ticketId) => state.selectedListTicketIds.includes(ticketId));
     const previousScrollTop = elements.listBoard.querySelector(".list-viewport")?.scrollTop ?? 0;
-    const doneButton = `<button type="button" class="list-action-button" data-bulk-complete="true" ${state.selectedListTicketIds.length === 0 ? "disabled" : ""}>Mark Done</button>`;
-    const openButton = `<button type="button" class="list-action-button" data-bulk-complete="false" ${state.selectedListTicketIds.length === 0 ? "disabled" : ""}>Mark Open</button>`;
-    const archiveButton = `<button type="button" class="list-action-button" data-bulk-archive="true" ${state.selectedListTicketIds.length === 0 ? "disabled" : ""}>Archive</button>`;
-    const restoreButton = `<button type="button" class="list-action-button" data-bulk-archive="false" ${state.selectedListTicketIds.length === 0 ? "disabled" : ""}>Restore</button>`;
+    const actions = renderListActions(detail.tickets);
     elements.listBoard.innerHTML = `
-      <div class="list-actions">${doneButton}${openButton}${archiveButton}${restoreButton}</div>
+      ${actions}
       <div class="list-header">
         <div><input type="checkbox" id="list-select-all" ${allSelected ? "checked" : ""} /></div>
         <div>ID / Title</div>
         <div>Blockers</div>
         <div>Tags</div>
         <div>Priority</div>
+        <div>Lane</div>
         <div>Status</div>
       </div>
       <div class="list-viewport">
@@ -164,7 +276,7 @@ export function createBoardModule(ctx) {
           <div class="list-window"></div>
         </div>
       </div>
-      <div class="list-actions">${doneButton}${openButton}${archiveButton}${restoreButton}</div>
+      ${actions}
     `;
     listModel = { orderedTickets, visibleTicketIds, rowHeight: LIST_ROW_HEIGHT, overscan: LIST_OVERSCAN };
     const viewport = elements.listBoard.querySelector(".list-viewport");
@@ -177,6 +289,32 @@ export function createBoardModule(ctx) {
       selectAll.indeterminate = selectedCount > 0 && selectedCount < visibleTicketIds.length;
     }
     paintVisibleListRows();
+  }
+
+  function renderListActions(tickets) {
+    const selectedTickets = tickets.filter((ticket) => state.selectedListTicketIds.includes(ticket.id));
+    if (selectedTickets.length === 0) {
+      return '<div class="list-actions list-actions-empty"><span>Select tickets to edit in bulk</span></div>';
+    }
+    const buttons = [];
+    if (selectedTickets.some((ticket) => !ticket.isCompleted)) {
+      buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-complete="true">${icon("check")}<span>Mark Done</span></button>`);
+    }
+    if (selectedTickets.some((ticket) => ticket.isCompleted)) {
+      buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-complete="false">${icon("circle")}<span>Mark Open</span></button>`);
+    }
+    if (selectedTickets.some((ticket) => !ticket.isArchived)) {
+      buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-archive="true">${icon("archive")}<span>Archive</span></button>`);
+    }
+    if (selectedTickets.some((ticket) => ticket.isArchived)) {
+      buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-archive="false">${icon("rotate-ccw")}<span>Restore</span></button>`);
+    }
+    return `
+      <div class="list-actions">
+        <span class="list-selection-count">${selectedTickets.length} selected</span>
+        ${buttons.join("")}
+      </div>
+    `;
   }
 
   function getListTickets(tickets) {
@@ -230,6 +368,7 @@ export function createBoardModule(ctx) {
       blocks.length ? `blocks ${blocks.join(", ")}` : "",
     ].filter(Boolean).join(" · ");
     const lane = state.boardDetail.lanes.find((item) => item.id === ticket.laneId);
+    const statusIcons = renderTicketStatusIcons(ticket);
     return `
       <div class="list-row ${ticket.isCompleted ? "completed" : ""} ${ticket.isArchived ? "archived" : ""}" style="height:${LIST_ROW_HEIGHT}px">
         <input type="checkbox" data-list-ticket-id="${ticket.id}" ${state.selectedListTicketIds.includes(ticket.id) ? "checked" : ""} />
@@ -240,7 +379,8 @@ export function createBoardModule(ctx) {
         <div class="list-cell muted">${relations || "-"}</div>
         <div class="tag-list">${tags || '<span class="muted">-</span>'}</div>
         <div class="list-cell">P${ticket.priority}</div>
-        <div class="list-cell muted">${ticket.isArchived ? "Archived" : ticket.isCompleted ? "Done" : ctx.escapeHtml(lane?.name || "Open")}</div>
+        <div class="list-cell muted">${ctx.escapeHtml(lane?.name || "Open")}</div>
+        <div class="list-cell list-status-cell">${statusIcons || '<span class="muted">-</span>'}</div>
       </div>
     `;
   }
@@ -299,9 +439,7 @@ export function createBoardModule(ctx) {
     } else {
       state.selectedListTicketIds = state.selectedListTicketIds.filter((id) => id !== ticketId);
     }
-    ctx.syncListActionButtons();
-    syncListSelectAllState();
-    paintVisibleListRows();
+    renderBoardDetail();
   }
 
   function handleListSelectAll(event, visibleTicketIds) {
@@ -311,9 +449,7 @@ export function createBoardModule(ctx) {
       const visibleSet = new Set(visibleTicketIds);
       state.selectedListTicketIds = state.selectedListTicketIds.filter((ticketId) => !visibleSet.has(ticketId));
     }
-    ctx.syncListActionButtons();
-    syncListSelectAllState();
-    paintVisibleListRows();
+    renderBoardDetail();
   }
 
   function syncListSelectAllState() {
@@ -358,10 +494,12 @@ export function createBoardModule(ctx) {
     card.className = `ticket-card ${ticket.isCompleted ? "completed" : ""} ${ticket.isArchived ? "archived" : ""}`;
     card.draggable = true;
     card.dataset.ticketId = String(ticket.id);
+    const statusIcons = renderTicketStatusIcons(ticket);
     card.innerHTML = `
       <div class="ticket-head">
         <span class="ticket-id">#${ticket.id}</span>
         <button type="button" class="ticket-link">${ctx.escapeHtml(ticket.title)}</button>
+        <span class="ticket-status-icons">${statusIcons}</span>
       </div>
       <div class="tag-list">
         ${ticket.tags.map((tag) => `<span class="tag" style="background:${ctx.escapeHtml(tag.color)}">${ctx.escapeHtml(tag.name)}</span>`).join("")}
@@ -380,6 +518,17 @@ export function createBoardModule(ctx) {
       card.classList.remove("dragging");
     });
     return card;
+  }
+
+  function renderTicketStatusIcons(ticket) {
+    return [
+      ticket.isCompleted
+        ? `<span class="ticket-status-icon ticket-status-icon-done" title="Done" aria-label="Done">${icon("check")}</span>`
+        : "",
+      ticket.isArchived
+        ? `<span class="ticket-status-icon ticket-status-icon-archived" title="Archived" aria-label="Archived">${icon("archive")}</span>`
+        : "",
+    ].join("");
   }
 
   function bindDropZone(list) {
@@ -479,41 +628,79 @@ export function createBoardModule(ctx) {
     await ctx.refreshBoardDetail();
   }
 
-  async function createBoard() {
-    const values = await ctx.requestFields({
-      title: "New Board",
-      submitLabel: "Create",
-      fields: [{ id: "name", label: "Board name", value: "", required: true }],
+  async function persistBoardOrder() {
+    const boardIds = [...elements.boardList.querySelectorAll(".board-button")].map((button) => Number(button.dataset.boardId));
+    if (boardIds.length !== state.boards.length || boardIds.every((boardId, index) => boardId === state.boards[index]?.id)) {
+      return;
+    }
+    const data = await ctx.sendJson("/api/boards/reorder", {
+      method: "POST",
+      body: { boardIds },
     });
-    if (!values) {
+    state.boards = data.boards;
+    renderBoards();
+  }
+
+  async function createBoard() {
+    state.isCreatingBoard = true;
+    renderBoards();
+  }
+
+  async function submitBoardCreate(input) {
+    const name = input?.value.trim() ?? "";
+    if (!name) {
+      cancelBoardCreate();
       return;
     }
     const created = await ctx.sendJson("/api/boards", {
       method: "POST",
-      body: { name: values.name },
+      body: { name },
     });
+    state.isCreatingBoard = false;
     state.activeBoardId = created.board.id;
     await ctx.refreshBoards();
     ctx.syncBoardUrl();
+  }
+
+  function cancelBoardCreate() {
+    if (!state.isCreatingBoard) {
+      return;
+    }
+    state.isCreatingBoard = false;
+    renderBoards();
   }
 
   async function createLane() {
     if (!state.activeBoardId) {
       return;
     }
-    const values = await ctx.requestFields({
-      title: "New Lane",
-      submitLabel: "Create",
-      fields: [{ id: "name", label: "Lane name", value: "", required: true }],
-    });
-    if (!values) {
+    state.isCreatingLane = true;
+    renderBoardDetail();
+  }
+
+  async function submitLaneCreate(input) {
+    if (!state.activeBoardId) {
+      return;
+    }
+    const name = input?.value.trim() ?? "";
+    if (!name) {
+      cancelLaneCreate();
       return;
     }
     await ctx.sendJson(`/api/boards/${state.activeBoardId}/lanes`, {
       method: "POST",
-      body: { name: values.name },
+      body: { name },
     });
+    state.isCreatingLane = false;
     await ctx.refreshBoardDetail();
+  }
+
+  function cancelLaneCreate() {
+    if (!state.isCreatingLane) {
+      return;
+    }
+    state.isCreatingLane = false;
+    renderBoardDetail();
   }
 
   async function renameBoard() {
@@ -590,42 +777,46 @@ export function createBoardModule(ctx) {
       const row = document.createElement("div");
       row.className = "sidebar-tag-row";
       row.innerHTML = `
-        <span class="sidebar-tag-badge" style="background:${ctx.escapeHtml(tag.color)}">${ctx.escapeHtml(tag.name)}</span>
-        <button type="button" class="icon-button" title="Edit tag" aria-label="Edit tag">${icon("pencil")}</button>
+        <button type="button" class="sidebar-tag-badge" style="background:${ctx.escapeHtml(tag.color)}" title="Edit tag: ${ctx.escapeHtml(tag.name)}" aria-label="Edit tag: ${ctx.escapeHtml(tag.name)}">
+          <span>${ctx.escapeHtml(tag.name)}</span>
+          ${icon("pencil")}
+        </button>
       `;
-      row.querySelector('button[title="Edit tag"]').addEventListener("click", async () => {
-        const result = await ctx.requestFieldsAction({
-          title: "Edit Tag",
-          submitLabel: "Save",
-          dangerLabel: "Delete",
-          fields: [
-            { id: "name", label: "Tag name", value: tag.name, required: true },
-            { id: "color", label: "Color", value: tag.color, required: true, type: "color" },
-          ],
-        });
-        if (!result) {
-          return;
-        }
-        try {
-          if (result.action === "danger") {
-            await ctx.api(`/api/tags/${tag.id}`, { method: "DELETE" });
-            ctx.showToast("Tag deleted");
-          } else if (result.action === "submit") {
-            await ctx.sendJson(`/api/tags/${tag.id}`, {
-              method: "PATCH",
-              body: { name: result.values.name, color: result.values.color },
-            });
-            ctx.showToast("Tag updated");
-          }
-          await ctx.refreshBoardDetail();
-          ctx.syncTicketTagOptions();
-          renderSidebarTags();
-        } catch (error) {
-          ctx.showToast(error.message, "error");
-        }
-      });
+      row.querySelector(".sidebar-tag-badge").addEventListener("click", () => editSidebarTag(tag));
 
       elements.sidebarTagList.append(row);
+    }
+  }
+
+  async function editSidebarTag(tag) {
+    const result = await ctx.requestFieldsAction({
+      title: "Edit Tag",
+      submitLabel: "Save",
+      dangerLabel: "Delete",
+      fields: [
+        { id: "name", label: "Tag name", value: tag.name, required: true },
+        { id: "color", label: "Color", value: tag.color, required: true, type: "color" },
+      ],
+    });
+    if (!result) {
+      return;
+    }
+    try {
+      if (result.action === "danger") {
+        await ctx.api(`/api/tags/${tag.id}`, { method: "DELETE" });
+        ctx.showToast("Tag deleted");
+      } else if (result.action === "submit") {
+        await ctx.sendJson(`/api/tags/${tag.id}`, {
+          method: "PATCH",
+          body: { name: result.values.name, color: result.values.color },
+        });
+        ctx.showToast("Tag updated");
+      }
+      await ctx.refreshBoardDetail();
+      ctx.syncTicketTagOptions();
+      renderSidebarTags();
+    } catch (error) {
+      ctx.showToast(error.message, "error");
     }
   }
 
@@ -699,6 +890,18 @@ export function createBoardModule(ctx) {
     elements.sidebarToggleButton.innerHTML = icon(state.sidebarCollapsed ? "menu" : "chevron-left");
   }
 
+  function toggleBoardSettings() {
+    state.boardSettingsExpanded = !state.boardSettingsExpanded;
+    syncBoardSettingsPanel();
+  }
+
+  function syncBoardSettingsPanel() {
+    elements.sidebarBoardSection.classList.toggle("expanded", state.boardSettingsExpanded);
+    elements.boardSettingsToggleButton.setAttribute("aria-expanded", String(state.boardSettingsExpanded));
+    elements.sidebarBoardActionsPanel.toggleAttribute("inert", !state.boardSettingsExpanded);
+    elements.sidebarBoardActionsPanel.setAttribute("aria-hidden", String(!state.boardSettingsExpanded));
+  }
+
   function getDragAfterElement(container, y) {
     const draggableElements = [...container.querySelectorAll(".ticket-card:not(.dragging)")];
     return draggableElements.reduce(
@@ -757,6 +960,39 @@ export function createBoardModule(ctx) {
     }
   }
 
+  function handleBoardListDragOver(event) {
+    const dragging =
+      state.activeBoardDragId == null
+        ? null
+        : elements.boardList.querySelector(`.board-button[data-board-id="${state.activeBoardDragId}"]`);
+    if (!dragging) {
+      return;
+    }
+    event.preventDefault();
+    const afterElement = getBoardAfterElement(elements.boardList, event.clientY);
+    if (!afterElement) {
+      elements.boardList.append(dragging);
+      return;
+    }
+    elements.boardList.insertBefore(dragging, afterElement);
+  }
+
+  function getBoardAfterElement(container, y) {
+    const boardButtons = [...container.querySelectorAll(".board-button:not(.dragging-board)")];
+    return boardButtons.reduce(
+      (closest, button) => {
+        const box = button.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+          return { offset, element: button };
+        }
+        return closest;
+      },
+      { offset: Number.NEGATIVE_INFINITY, element: null },
+    ).element;
+  }
+
+  elements.boardList.addEventListener("dragover", handleBoardListDragOver);
   elements.listBoard.addEventListener("click", handleListBoardClick);
   elements.listBoard.addEventListener("change", handleListBoardChange);
   elements.listBoard.addEventListener(
@@ -784,7 +1020,7 @@ export function createBoardModule(ctx) {
     exportBoard,
     importBoard,
     toggleSidebar,
+    toggleBoardSettings,
     syncSidebar,
-    syncListActionButtons: ctx.syncListActionButtons,
   };
 }

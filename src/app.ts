@@ -56,11 +56,12 @@ const healthResponseSchema = {
 
 const boardViewSchema = {
   type: "object",
-  required: ["id", "name", "createdAt", "updatedAt"],
+  required: ["id", "name", "position", "createdAt", "updatedAt"],
   additionalProperties: false,
   properties: {
     id: positiveIntegerSchema,
     name: { type: "string" },
+    position: { type: "integer", minimum: 0 },
     createdAt: { type: "string" },
     updatedAt: { type: "string" },
   },
@@ -390,6 +391,15 @@ const boardRenameBodySchema = {
   additionalProperties: false,
   properties: {
     name: { type: "string", minLength: 1 },
+  },
+} as const;
+
+const reorderBoardsBodySchema = {
+  type: "object",
+  required: ["boardIds"],
+  additionalProperties: false,
+  properties: {
+    boardIds: optionalPositiveIntegerArraySchema,
   },
 } as const;
 
@@ -740,6 +750,28 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return reply.code(204).send();
     } catch {
       return reply.code(404).send({ error: "board not found" });
+    }
+  });
+
+  app.post("/api/boards/reorder", {
+    schema: {
+      body: reorderBoardsBodySchema,
+      response: {
+        200: boardsResponseSchema,
+        400: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const body = request.body as { boardIds?: number[] };
+    if (!Array.isArray(body?.boardIds)) {
+      return reply.code(400).send({ error: "boardIds is required" });
+    }
+    try {
+      const boards = db.reorderBoards(body.boardIds);
+      return { boards };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "board reorder failed";
+      return reply.code(400).send({ error: message });
     }
   });
 

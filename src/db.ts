@@ -133,6 +133,7 @@ export class KanbanDb {
       CREATE TABLE IF NOT EXISTS boards (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -225,6 +226,11 @@ export class KanbanDb {
     `);
 
     const ticketColumns = this.sqlite.prepare("PRAGMA table_info(tickets)").all() as Array<{ name: string }>;
+    const boardColumns = this.sqlite.prepare("PRAGMA table_info(boards)").all() as Array<{ name: string }>;
+    if (!boardColumns.some((column) => column.name === "position")) {
+      this.sqlite.exec("ALTER TABLE boards ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
+      this.normalizeBoardPositions();
+    }
     if (!ticketColumns.some((column) => column.name === "priority")) {
       this.sqlite.exec("ALTER TABLE tickets ADD COLUMN priority INTEGER NOT NULL DEFAULT 0");
     }
@@ -274,6 +280,9 @@ export class KanbanDb {
       `);
     }
     this.sqlite.exec(`
+      CREATE INDEX IF NOT EXISTS boards_position_idx
+      ON boards(position, id);
+
       CREATE INDEX IF NOT EXISTS activity_logs_ticket_created_idx
       ON activity_logs(ticket_id, created_at, id);
 
@@ -288,21 +297,22 @@ export class KanbanDb {
 
   listBoards(): BoardView[] {
     const rows = this.sqlite
-      .prepare("SELECT * FROM boards ORDER BY updated_at DESC, id DESC")
+      .prepare("SELECT * FROM boards ORDER BY position ASC, id ASC")
       .all() as BoardRow[];
     return rows.map(mapBoard);
   }
 
   createBoard(input: CreateBoardInput): BoardDetailView {
     const now = this.now();
+    const position = this.nextBoardPosition();
     const insertBoard = this.sqlite.prepare(
-      "INSERT INTO boards (name, created_at, updated_at) VALUES (?, ?, ?)",
+      "INSERT INTO boards (name, position, created_at, updated_at) VALUES (?, ?, ?, ?)",
     );
     const insertLane = this.sqlite.prepare(
       "INSERT INTO lanes (board_id, name, position) VALUES (?, ?, ?)",
     );
     const tx = this.sqlite.transaction(() => {
-      const result = insertBoard.run(input.name, now, now);
+      const result = insertBoard.run(input.name, position, now, now);
       const boardId = Number(result.lastInsertRowid);
       const laneNames = input.laneNames && input.laneNames.length > 0 ? input.laneNames : DEFAULT_LANES;
       laneNames.forEach((laneName, index) => {
@@ -355,6 +365,7 @@ export class KanbanDb {
     if (result.changes === 0) {
       throw new Error("Board not found");
     }
+    this.normalizeBoardPositions();
   }
 
   listLanes(boardId: Id): LaneView[] {
@@ -411,6 +422,19 @@ export class KanbanDb {
     });
     tx();
     return this.listLanes(boardId);
+  }
+
+  reorderBoards(boardIds: Id[]): BoardView[] {
+    const boards = this.listBoards();
+    if (boards.length !== boardIds.length || boards.some((board) => !boardIds.includes(board.id))) {
+      throw new Error("Board order does not match boards");
+    }
+    const stmt = this.sqlite.prepare("UPDATE boards SET position = ? WHERE id = ?");
+    const tx = this.sqlite.transaction(() => {
+      boardIds.forEach((boardId, index) => stmt.run(index, boardId));
+    });
+    tx();
+    return this.listBoards();
   }
 
   listTags(boardId: Id): TagView[] {
@@ -1099,6 +1123,13 @@ export class KanbanDb {
     return row.nextPosition;
   }
 
+  private nextBoardPosition(): number {
+    const row = this.sqlite
+      .prepare("SELECT COALESCE(MAX(position), -1) + 1 AS nextPosition FROM boards")
+      .get() as { nextPosition: number };
+    return row.nextPosition;
+  }
+
   private nextTicketPosition(laneId: Id): number {
     const row = this.sqlite
       .prepare("SELECT COALESCE(MAX(position), -1) + 1 AS nextPosition FROM tickets WHERE lane_id = ?")
@@ -1110,6 +1141,14 @@ export class KanbanDb {
     const lanes = this.listLanes(boardId);
     const stmt = this.sqlite.prepare("UPDATE lanes SET position = ? WHERE id = ?");
     lanes.forEach((lane, index) => stmt.run(index, lane.id));
+  }
+
+  private normalizeBoardPositions(): void {
+    const rows = this.sqlite
+      .prepare("SELECT id FROM boards ORDER BY updated_at DESC, id DESC")
+      .all() as Array<{ id: Id }>;
+    const stmt = this.sqlite.prepare("UPDATE boards SET position = ? WHERE id = ?");
+    rows.forEach((row, index) => stmt.run(index, row.id));
   }
 
   private normalizeTicketPositions(laneId: Id): void {
@@ -1379,6 +1418,7 @@ function mapBoard(row: BoardRow): BoardView {
   return {
     id: row.id,
     name: row.name,
+    position: row.position,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

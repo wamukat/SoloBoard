@@ -526,6 +526,59 @@ test("deleted ticket activity remains available through the API", async () => {
   await app.close();
 });
 
+test("boards can be reordered", async () => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+  });
+
+  const first = (await app.inject({
+    method: "POST",
+    url: "/api/boards",
+    payload: { name: "First" },
+  })).json();
+  const second = (await app.inject({
+    method: "POST",
+    url: "/api/boards",
+    payload: { name: "Second" },
+  })).json();
+  const third = (await app.inject({
+    method: "POST",
+    url: "/api/boards",
+    payload: { name: "Third" },
+  })).json();
+
+  const reorderResponse = await app.inject({
+    method: "POST",
+    url: "/api/boards/reorder",
+    payload: { boardIds: [third.board.id, first.board.id, second.board.id] },
+  });
+  assert.equal(reorderResponse.statusCode, 200);
+  assert.deepEqual(
+    reorderResponse.json().boards.map((board: { name: string; position: number }) => ({ name: board.name, position: board.position })),
+    [
+      { name: "Third", position: 0 },
+      { name: "First", position: 1 },
+      { name: "Second", position: 2 },
+    ],
+  );
+
+  const listResponse = await app.inject({ method: "GET", url: "/api/boards" });
+  assert.deepEqual(
+    listResponse.json().boards.map((board: { name: string }) => board.name),
+    ["Third", "First", "Second"],
+  );
+
+  const invalidResponse = await app.inject({
+    method: "POST",
+    url: "/api/boards/reorder",
+    payload: { boardIds: [first.board.id, second.board.id] },
+  });
+  assert.equal(invalidResponse.statusCode, 400);
+
+  await app.close();
+});
+
 test("reordering visible tickets preserves stable archived positions on restore", () => {
   const db = new KanbanDb(createDbFile());
   const board = db.createBoard({ name: "Archive Order Board", laneNames: ["todo"] });

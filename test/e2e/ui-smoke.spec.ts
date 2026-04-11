@@ -64,9 +64,10 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     expect(ticketResponse.status()).toBe(201);
 
     const relationTickets = [
-      { title: "Parent candidate", priority: 8 },
+      { title: "Parent candidate", priority: 8, isCompleted: true },
       { title: "Blocker candidate", priority: 7 },
       { title: "Child candidate", priority: 6 },
+      { title: "Archived candidate", priority: 5, isArchived: true },
     ];
     for (const ticket of relationTickets) {
       const relationResponse = await page.request.post(`${baseUrl}/api/boards/${boardPayload.board.id}/tickets`, {
@@ -74,6 +75,8 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
           laneId: todoLane.id,
           title: ticket.title,
           priority: ticket.priority,
+          isCompleted: ticket.isCompleted ?? false,
+          isArchived: ticket.isArchived ?? false,
         },
       });
       expect(relationResponse.status()).toBe(201);
@@ -81,6 +84,126 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
 
     await page.goto(`${baseUrl}/boards/${boardPayload.board.id}`);
     await expect(page.locator("#board-title")).toHaveText("UI Smoke");
+    await expect(page.locator("#completed-filter [data-value='false']")).toHaveClass(/active/);
+    await expect(page.locator(".ticket-card")).toHaveCount(3);
+    await expect(page.locator(".board-title-row")).toBeHidden();
+    await page.locator("#new-board-button").click();
+    await expect(page.locator("[data-board-create-input]")).toBeFocused();
+    await expect(page.locator("#new-board-button")).toBeHidden();
+    await page.locator("#search-input").click();
+    await expect(page.locator("[data-board-create-input]")).toHaveCount(0);
+    await expect(page.locator("#new-board-button")).toBeVisible();
+    await page.locator("#new-board-button").click();
+    await page.locator("[data-board-create-input]").fill("Canceled board");
+    await page.locator("[data-board-create-input]").press("Escape");
+    await expect(page.getByRole("button", { name: "Canceled board" })).toHaveCount(0);
+    await page.locator("#new-board-button").click();
+    await page.locator("[data-board-create-input]").fill("Inline Board");
+    await page.locator("[data-board-create-input]").press("Enter");
+    await expect(page.locator("#board-title")).toHaveText("Inline Board");
+    await page.getByRole("button", { name: "UI Smoke" }).click();
+    await expect(page.locator("#board-title")).toHaveText("UI Smoke");
+    await expect(page.locator("#board-list .board-button").first()).toHaveText("UI Smoke");
+    await Promise.all([
+      page.waitForResponse((response) => response.url().endsWith("/api/boards/reorder") && response.status() === 200),
+      page.getByRole("button", { name: "Inline Board" }).dragTo(page.getByRole("button", { name: "UI Smoke" }), {
+        targetPosition: { x: 8, y: 4 },
+      }),
+    ]);
+    await expect(page.locator("#board-list .board-button").first()).toHaveText("Inline Board");
+    await page.reload();
+    await expect(page.locator("#board-list .board-button").first()).toHaveText("Inline Board");
+    await page.getByRole("button", { name: "UI Smoke" }).click();
+    await expect(page.locator("#board-title")).toHaveText("UI Smoke");
+    await page.getByRole("button", { name: "New lane" }).click();
+    await expect(page.locator("[data-lane-create-input]")).toBeFocused();
+    await page.locator("#search-input").click();
+    await expect(page.locator("[data-lane-create-input]")).toHaveCount(0);
+    await page.getByRole("button", { name: "New lane" }).click();
+    await page.locator("[data-lane-create-input]").fill("Canceled lane");
+    await page.locator("[data-lane-create-input]").press("Escape");
+    await expect(page.locator(".lane-title", { hasText: "Canceled lane" })).toHaveCount(0);
+    await page.getByRole("button", { name: "New lane" }).click();
+    await page.locator("[data-lane-create-input]").fill("review");
+    await page.locator("[data-lane-create-input]").press("Enter");
+    await expect(page.locator(".lane-title", { hasText: "review" })).toBeVisible();
+    await page.locator("#completed-filter [data-value='']").click();
+    await expect(page.locator(".ticket-card")).toHaveCount(4);
+    const openSidebarSearchOffset = await page.locator(".toolbar-search").evaluate((search) => {
+      const toolbar = document.querySelector(".toolbar");
+      if (!toolbar) {
+        return 0;
+      }
+      return search.getBoundingClientRect().left - toolbar.getBoundingClientRect().left;
+    });
+    expect(openSidebarSearchOffset).toBeLessThan(1);
+    await expect(page.locator("#sidebar #view-mode-toggle")).toBeVisible();
+    await expect(page.locator(".toolbar #view-mode-toggle")).toHaveCount(0);
+    await expect(page.locator("#sidebar #view-mode-toggle use[href='/icons.svg#columns-3']")).toHaveCount(1);
+    await expect(page.locator("#sidebar #view-mode-toggle use[href='/icons.svg#list']")).toHaveCount(1);
+    await expect(page.locator("#board-settings-toggle-button use[href='/icons.svg#settings']")).toHaveCount(1);
+    await expect(page.locator("#board-settings-toggle-button")).toHaveAttribute("aria-expanded", "false");
+    await expect(page.locator("#sidebar-board-actions-panel")).toHaveAttribute("aria-hidden", "true");
+    await expect.poll(async () => page.locator("#sidebar-board-actions-panel").evaluate((panel) => panel.getBoundingClientRect().height)).toBe(0);
+    await expect(page.locator("#sidebar-board-section > .sidebar-section-head h3")).toHaveCount(0);
+    await page.locator("#board-settings-toggle-button").click();
+    await expect(page.locator("#board-settings-toggle-button")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("#sidebar-board-actions-panel")).toHaveAttribute("aria-hidden", "false");
+    await expect.poll(async () => page.locator("#sidebar-board-actions-panel").evaluate((panel) => panel.getBoundingClientRect().height)).toBeGreaterThan(0);
+    await expect(page.locator("#sidebar-board-actions-panel .sidebar-board-panel-title")).toHaveText("Board");
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const panel = document.querySelector("#sidebar-board-actions-panel");
+          const deleteButton = document.querySelector("#delete-board-button");
+          if (!panel || !deleteButton) {
+            return false;
+          }
+          return deleteButton.getBoundingClientRect().bottom <= panel.getBoundingClientRect().bottom;
+        }),
+      )
+      .toBe(true);
+    await expect(page.locator("[data-action='rename-lane']").first()).toBeHidden();
+    await page.locator("[data-action='toggle-lane-actions']").first().click();
+    await expect(page.locator("[data-action='toggle-lane-actions']").first()).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("[data-action='rename-lane']").first()).toBeVisible();
+    await expect(page.locator("[data-action='delete-lane']").first()).toBeVisible();
+    await expect(page.locator("[data-action='delete-lane']").first()).toHaveCSS("color", "rgb(185, 61, 36)");
+    await page.locator("#sidebar #view-mode-toggle [data-view-mode='list']").click();
+    await expect(page.locator("#list-board")).toBeVisible();
+    await expect(page.locator(".list-header")).toContainText("Lane");
+    await expect(page.locator(".list-header")).toContainText("Status");
+    await expect(page.locator(".list-actions").first()).toContainText("Select tickets to edit in bulk");
+    await expect(page.locator(".list-action-button")).toHaveCount(0);
+    const emptyListActionsHeight = await page.locator(".list-actions").first().evaluate((element) => element.getBoundingClientRect().height);
+    await page.getByRole("button", { name: "Smoke ticket" }).locator("..").locator("[data-list-ticket-id]").check();
+    await expect(page.locator(".list-actions").first()).toContainText("1 selected");
+    const selectedListActionsHeight = await page.locator(".list-actions").first().evaluate((element) => element.getBoundingClientRect().height);
+    expect(Math.abs(selectedListActionsHeight - emptyListActionsHeight)).toBeLessThan(1);
+    await expect(page.locator("[data-bulk-complete='true'] use[href='/icons.svg#check']").first()).toHaveCount(1);
+    await expect(page.locator("[data-bulk-archive='true'] use[href='/icons.svg#archive']").first()).toHaveCount(1);
+    await expect(page.locator("[data-bulk-complete='false']")).toHaveCount(0);
+    await expect(page.locator("[data-bulk-archive='false']")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Parent candidate" }).locator("..").locator(".list-status-cell .ticket-status-icon-done use[href='/icons.svg#check']")).toHaveCount(1);
+    await page.getByRole("button", { name: "Parent candidate" }).locator("..").locator("[data-list-ticket-id]").check();
+    await expect(page.locator(".list-actions").first()).toContainText("2 selected");
+    await expect(page.locator("[data-bulk-complete='false'] use[href='/icons.svg#circle']").first()).toHaveCount(1);
+    await page.locator("#sidebar #view-mode-toggle [data-view-mode='kanban']").click();
+    await expect(page.locator("#lane-board")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Parent candidate" }).locator("..").locator(".ticket-status-icon-done use[href='/icons.svg#check']")).toHaveCount(1);
+    await expect(page.locator("#export-board-button use[href='/icons.svg#download']")).toHaveCount(1);
+    await expect(page.locator(".import-button use[href='/icons.svg#upload']")).toHaveCount(1);
+    await expect(page.locator("#rename-board-button use[href='/icons.svg#pencil']")).toHaveCount(1);
+    await expect(page.locator("#delete-board-button use[href='/icons.svg#trash-2']")).toHaveCount(1);
+    await page.locator("#archived-filter-button").click();
+    await expect(page.locator(".ticket-card")).toHaveCount(5);
+    await expect(page.getByRole("button", { name: "Archived candidate" }).locator("..").locator(".ticket-status-icon-archived use[href='/icons.svg#archive']")).toHaveCount(1);
+    await page.locator("#sidebar #view-mode-toggle [data-view-mode='list']").click();
+    await expect(page.getByRole("button", { name: "Archived candidate" }).locator("..").locator(".list-status-cell .ticket-status-icon-archived use[href='/icons.svg#archive']")).toHaveCount(1);
+    await page.getByRole("button", { name: "Archived candidate" }).locator("..").locator("[data-list-ticket-id]").check();
+    await expect(page.locator("[data-bulk-archive='false'] use[href='/icons.svg#rotate-ccw']").first()).toHaveCount(1);
+    await page.locator("#sidebar #view-mode-toggle [data-view-mode='kanban']").click();
+    await page.locator("#archived-filter-button").click();
     await expect(page.locator(".ticket-card")).toHaveCount(4);
 
     await page.getByRole("button", { name: "Smoke ticket" }).click();
@@ -95,13 +218,30 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await expect(page.locator("#ticket-comments .comment-item")).toContainText("E2E comment saved");
     await expect(page.locator("#comment-body")).toHaveValue("");
 
+    await expect(page.locator("[data-edit-comment-id]")).toBeHidden();
+    await page.locator("[data-toggle-comment-actions]").click();
+    await expect(page.locator("[data-toggle-comment-actions]")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("[data-edit-comment-id]")).toBeVisible();
+    await expect(page.locator("[data-delete-comment-id]")).toBeVisible();
+    await expect(page.locator("[data-delete-comment-id]")).toHaveCSS("color", "rgb(185, 61, 36)");
     await page.locator("[data-edit-comment-id]").click();
-    await expect(page.locator("#ux-dialog")).toHaveJSProperty("open", true);
-    await page.locator('[data-field-id="bodyMarkdown"]').fill("E2E comment edited");
-    await page.locator("#ux-submit-button").click();
+    await expect(page.locator("[data-comment-edit-form]")).toBeVisible();
+    await expect(page.locator("[data-comment-edit-body]")).toHaveValue("E2E comment **saved**");
     await expect(page.locator("#ux-dialog")).not.toHaveJSProperty("open", true);
+    await page.locator("[data-comment-edit-body]").fill("Canceled edit");
+    await page.locator("[data-cancel-comment-edit]").click();
+    await expect(page.locator("[data-comment-edit-form]")).toBeHidden();
+    await expect(page.locator("#ticket-comments .comment-item")).toContainText("E2E comment saved");
+    await page.locator("[data-toggle-comment-actions]").click();
+    await page.locator("[data-edit-comment-id]").click();
+    await page.locator("[data-comment-edit-body]").fill("E2E comment edited");
+    await page.locator("[data-save-comment-id]").click();
+    await expect(page.locator("[data-comment-edit-form]")).toBeHidden();
     await expect(page.locator("#ticket-comments .comment-item")).toContainText("E2E comment edited");
 
+    await expect(page.locator("[data-delete-comment-id]")).toBeHidden();
+    await page.locator("[data-toggle-comment-actions]").click();
+    await expect(page.locator("[data-delete-comment-id]")).toBeVisible();
     await page.locator("[data-delete-comment-id]").click();
     await expect(page.locator("#ux-dialog")).toHaveJSProperty("open", true);
     await expect(page.locator("#ux-submit-button")).toHaveText("Delete");
@@ -122,6 +262,36 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await expect(page.locator("#editor-form")).toBeVisible();
     await expect(page.locator("#save-ticket-button")).toHaveClass(/primary-action/);
     await expect(page.locator("#delete-ticket-button use[href='/icons.svg#trash-2']")).toHaveCount(1);
+    await expect(page.locator("#archive-ticket-button use[href='/icons.svg#archive']")).toHaveCount(1);
+    await expect(page.locator("#archive-ticket-button")).toContainText("Archive");
+    await expect(page.locator("#ticket-completed-row .completion-toggle-label")).toHaveText("Done");
+    await expect(page.locator("#ticket-completed-row .completion-toggle-control")).not.toContainText("Done");
+    await expect(page.locator("#ticket-completed-row .completion-switch")).toHaveCount(1);
+    await expect(page.locator("#ticket-completed")).not.toBeChecked();
+    await page.locator("#ticket-completed-row").click();
+    await expect(page.locator("#ticket-completed")).toBeChecked();
+    await page.locator("#ticket-completed-row").click();
+    await expect(page.locator("#ticket-completed")).not.toBeChecked();
+    const archiveAfterDelete = await page.locator("#delete-ticket-button").evaluate((deleteButton) => {
+      const archiveButton = document.querySelector("#archive-ticket-button");
+      return Boolean(archiveButton && deleteButton.compareDocumentPosition(archiveButton) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    expect(archiveAfterDelete).toBe(true);
+    await expect(page.locator(".editor-section-label")).toHaveText("Relations");
+    const relationsBeforeBlocker = await page.locator(".editor-section-label").evaluate((label) => {
+      const blocker = document.querySelector("#ticket-blocker-toggle");
+      return Boolean(blocker && label.compareDocumentPosition(blocker) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    expect(relationsBeforeBlocker).toBe(true);
+    const editActionButtonMetrics = await page.evaluate(() => {
+      const deleteBox = document.querySelector("#delete-ticket-button")?.getBoundingClientRect();
+      const archiveBox = document.querySelector("#archive-ticket-button")?.getBoundingClientRect();
+      return {
+        deleteHeight: deleteBox?.height ?? 0,
+        archiveHeight: archiveBox?.height ?? 0,
+      };
+    });
+    expect(Math.abs(editActionButtonMetrics.deleteHeight - editActionButtonMetrics.archiveHeight)).toBeLessThan(1);
     await expect(page.locator("#editor-header-title")).toBeHidden();
 
     await page.locator("#ticket-new-tag-button").click();
@@ -132,6 +302,11 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await expect(page.locator("#ux-dialog")).not.toHaveJSProperty("open", true);
     await expect(page.locator("#ticket-tag-summary")).toContainText("smoke-tag");
     await expect(page.locator("#ticket-tag-options [data-tag-id]")).toHaveCount(1);
+    const sidebarTagBadge = page.locator("#sidebar-tag-list .sidebar-tag-badge", { hasText: "smoke-tag" });
+    await expect(sidebarTagBadge).toBeVisible();
+    await expect(sidebarTagBadge).toHaveAttribute("aria-label", "Edit tag: smoke-tag");
+    await expect(sidebarTagBadge.locator("use[href='/icons.svg#pencil']")).toHaveCount(1);
+    await expect(page.locator("#sidebar-tag-list .icon-button")).toHaveCount(0);
 
     await page.locator("[data-remove-tag-id]").click();
     await expect(page.locator("#ticket-tag-summary")).not.toContainText("smoke-tag");
@@ -156,7 +331,8 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await expect(page.locator("#ticket-parent-summary")).toContainText("Parent candidate");
     await expect(page.locator("#ticket-child-summary")).toContainText("Clear parent to edit children");
     await page.locator("[data-remove-parent-id]").click();
-    await expect(page.locator("#ticket-parent-summary")).toContainText("No parent");
+    await expect(page.locator("#ticket-parent-summary")).not.toContainText("Parent candidate");
+    await expect(page.locator("#ticket-parent-search")).toHaveAttribute("placeholder", "Set parent by ID or title");
 
     await page.locator("#ticket-blocker-search").fill("Blocker");
     await page.locator("#ticket-blocker-search").press("Enter");

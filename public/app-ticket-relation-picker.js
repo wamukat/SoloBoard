@@ -8,9 +8,12 @@ export function createTicketRelationPicker(ctx) {
   function syncOptions() {
     const selectedIds = ctx.getSelectedTicketIds();
     const selectedTickets = getSelectedTickets();
+    const placeholder = ctx.getPlaceholder();
     elements.summary.innerHTML = selectedTickets.length
       ? selectedTickets.map((ticket) => ctx.renderSummaryChip(ticket, ctx.removeAttr)).join("")
-      : `<span class="ticket-tag-placeholder">${ctx.getPlaceholder()}</span>`;
+      : placeholder
+        ? `<span class="ticket-tag-placeholder">${ctx.escapeHtml(placeholder)}</span>`
+        : "";
 
     if (ctx.getUnavailableMessage) {
       const message = ctx.getUnavailableMessage();

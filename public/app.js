@@ -12,17 +12,21 @@ const state = {
   boardEventsBoardId: null,
   boardRefreshInFlight: false,
   boardRefreshQueued: false,
+  isCreatingBoard: false,
+  isCreatingLane: false,
   viewMode: "kanban",
   selectedListTicketIds: [],
   sidebarCollapsed: localStorage.getItem("soloboard:sidebar-collapsed") === "true",
+  boardSettingsExpanded: false,
   filters: {
     q: "",
     lane: "",
-    completed: "",
+    completed: "false",
     tag: "",
     archived: "",
   },
   editingTicketId: null,
+  activeBoardDragId: null,
   activeLaneDragId: null,
   dialogMode: "view",
   skipDialogCloseSync: false,
@@ -49,6 +53,8 @@ const elements = {
   sidebarTagList: document.querySelector("#sidebar-tag-list"),
   newSidebarTagButton: document.querySelector("#new-sidebar-tag-button"),
   sidebarBoardSection: document.querySelector("#sidebar-board-section"),
+  boardSettingsToggleButton: document.querySelector("#board-settings-toggle-button"),
+  sidebarBoardActionsPanel: document.querySelector("#sidebar-board-actions-panel"),
   renameBoardButton: document.querySelector("#rename-board-button"),
   deleteBoardButton: document.querySelector("#delete-board-button"),
   boardTitle: document.querySelector("#board-title"),
@@ -131,7 +137,7 @@ const elements = {
 async function main() {
   bindEvents();
   syncSidebar();
-  syncCompletedFilter("");
+  syncCompletedFilter();
   syncArchivedFilter();
   syncViewMode();
   await refreshBoards();
@@ -145,14 +151,6 @@ function syncViewMode() {
   elements.laneBoard.hidden = state.viewMode !== "kanban";
   elements.listBoard.hidden = state.viewMode !== "list";
   elements.laneFilter.hidden = state.viewMode !== "list";
-  syncListActionButtons();
-}
-
-function syncListActionButtons() {
-  const disabled = state.selectedListTicketIds.length === 0;
-  elements.listBoard.querySelectorAll(".list-action-button").forEach((button) => {
-    button.disabled = disabled;
-  });
 }
 
 function bindEvents() {
@@ -160,6 +158,7 @@ function bindEvents() {
   elements.sidebarReopenButton.addEventListener("click", toggleSidebar);
   elements.newBoardButton.addEventListener("click", createBoard);
   elements.newSidebarTagButton.addEventListener("click", createTag);
+  elements.boardSettingsToggleButton.addEventListener("click", toggleBoardSettings);
   elements.renameBoardButton.addEventListener("click", renameBoard);
   elements.deleteBoardButton.addEventListener("click", deleteBoard);
   elements.ticketTagToggle.addEventListener("click", handleTicketTagFieldClick);
@@ -369,10 +368,10 @@ async function refreshBoards() {
 }
 
 function resetBoardFilters() {
-  state.filters = { q: "", lane: "", completed: "", tag: "", archived: "" };
+  state.filters = { q: "", lane: "", completed: "false", tag: "", archived: "" };
   elements.searchInput.value = "";
   elements.laneFilter.value = "";
-  syncCompletedFilter("");
+  syncCompletedFilter();
   syncArchivedFilter();
   elements.tagFilter.value = "";
 }
@@ -669,7 +668,6 @@ const boardModule = createBoardModule({
   sendJson,
   showToast,
   syncBoardUrl,
-  syncListActionButtons,
   syncTicketTagOptions,
   syncViewMode,
 });
@@ -689,6 +687,7 @@ const {
   exportBoard,
   importBoard,
   toggleSidebar,
+  toggleBoardSettings,
   syncSidebar,
 } = boardModule;
 
