@@ -1294,7 +1294,7 @@ export class KanbanDb {
         SELECT *
         FROM comments
         WHERE ticket_id IN (${placeholders})
-        ORDER BY created_at ASC, id ASC
+        ORDER BY created_at DESC, id DESC
         `,
       )
       .all(...ticketIds) as CommentRow[];

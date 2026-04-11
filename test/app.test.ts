@@ -268,10 +268,10 @@ test("comment list, relations, transition, and canonical refs", async () => {
   assert.equal(commentsResponse.statusCode, 200);
   assert.deepEqual(
     commentsResponse.json().comments.map((comment: { bodyMarkdown: string }) => comment.bodyMarkdown),
-    ["First comment", "Second comment"],
+    ["Second comment", "First comment"],
   );
 
-  const firstCommentId = commentsResponse.json().comments[0].id;
+  const firstCommentId = commentsResponse.json().comments[1].id;
   const updateCommentResponse = await app.inject({
     method: "PATCH",
     url: `/api/comments/${firstCommentId}`,

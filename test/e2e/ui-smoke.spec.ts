@@ -260,6 +260,11 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await expect(page.locator("#editor-header-title")).toBeVisible();
     await expect(page.locator("#header-edit-button")).toBeVisible();
     await expect(page.locator("#save-comment-button")).toHaveClass(/primary-action/);
+    const commentFormBeforeList = await page.locator("#comment-form").evaluate((form) => {
+      const list = document.querySelector("#ticket-comments");
+      return Boolean(list && form.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    expect(commentFormBeforeList).toBe(true);
 
     await page.locator("#comment-body").fill("E2E comment **saved**");
     await page.locator("#save-comment-button").click();

@@ -50,7 +50,7 @@
 
 ### 5. コメントは一覧取得・追記・編集・削除ができる
 
-- `GET /api/tickets/:ticketId/comments` で一覧取得できます。
+- `GET /api/tickets/:ticketId/comments` で一覧取得できます。返却順は新しいコメントが先です。
 - `POST /api/tickets/:ticketId/comments` で追記できます。
 - `PATCH /api/comments/:commentId` で編集できます。
 - `DELETE /api/comments/:commentId` で削除できます。
@@ -122,6 +122,7 @@ ID ベース:
 
 - `GET /api/tickets/:ticketId/activity`
 - comment 追加/更新/削除、ticket 更新、transition、archive などの履歴が返る
+- 返却順は新しい activity が先です。
 
 ### チケットを完了にしたい
 

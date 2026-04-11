@@ -669,6 +669,7 @@ paths:
   /api/tickets/{ticketId}/comments:
     get:
       summary: List comments
+      description: Returns comments with the newest comment first.
       operationId: listComments
       parameters:
         - $ref: "#/components/parameters/TicketId"
@@ -763,6 +764,7 @@ paths:
   /api/tickets/{ticketId}/activity:
     get:
       summary: List ticket activity
+      description: Returns activity entries with the newest entry first.
       operationId: listTicketActivity
       parameters:
         - $ref: "#/components/parameters/TicketId"
