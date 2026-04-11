@@ -100,7 +100,7 @@ docker build -t soloboard:local .
 Pull the published image:
 
 ```bash
-docker pull ghcr.io/wamukat/soloboard:latest
+docker pull ghcr.io/wamukat/soloboard:v0.9.0
 ```
 
 Run with Docker:
@@ -110,8 +110,10 @@ mkdir -p data
 docker run --rm \
   -p 3000:3000 \
   -v "$PWD/data:/app/data" \
-  ghcr.io/wamukat/soloboard:latest
+  ghcr.io/wamukat/soloboard:v0.9.0
 ```
+
+Use `ghcr.io/wamukat/soloboard:latest` when you want the newest released image instead of a pinned version.
 
 Run with Docker Compose:
 
