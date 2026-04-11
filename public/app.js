@@ -257,15 +257,16 @@ function bindEvents() {
   window.addEventListener("pointermove", handleEditorHeaderPointerMove);
   window.addEventListener("pointerup", handleEditorHeaderPointerUp);
   document.addEventListener("click", handleDocumentClick);
+  document.addEventListener("keydown", handleDocumentKeydown);
 }
 
 function clampEditorDialogPosition(left, top) {
   const rect = elements.editorDialog.getBoundingClientRect();
   const maxLeft = Math.max(12, window.innerWidth - rect.width - 12);
-  const maxTop = Math.max(12, window.innerHeight - rect.height - 12);
+  const minTop = window.scrollY + 12;
   return {
     left: Math.min(Math.max(12, left), maxLeft),
-    top: Math.min(Math.max(12, top), maxTop),
+    top: Math.max(minTop, top),
   };
 }
 
@@ -279,6 +280,17 @@ function applyEditorDialogPosition(position) {
   elements.editorDialog.style.top = `${clamped.top}px`;
 }
 
+function prepareEditorDialogPosition(scrollY = window.scrollY) {
+  const dialogWidth = Math.min(720, Math.max(0, window.innerWidth - 32));
+  const position = {
+    left: Math.max(12, (window.innerWidth - dialogWidth) / 2),
+    top: scrollY + 48,
+  };
+  state.editorDialogPosition = position;
+  elements.editorDialog.style.left = `${position.left}px`;
+  elements.editorDialog.style.top = `${position.top}px`;
+}
+
 function ensureEditorDialogPosition() {
   if (state.editorDialogPosition) {
     applyEditorDialogPosition(state.editorDialogPosition);
@@ -287,7 +299,7 @@ function ensureEditorDialogPosition() {
   const rect = elements.editorDialog.getBoundingClientRect();
   applyEditorDialogPosition({
     left: Math.max(12, (window.innerWidth - rect.width) / 2),
-    top: 48,
+    top: window.scrollY + 48,
   });
 }
 
@@ -317,7 +329,7 @@ function handleEditorHeaderPointerMove(event) {
   }
   applyEditorDialogPosition({
     left: drag.left + (event.clientX - drag.startX),
-    top: drag.top + (event.clientY - drag.startY),
+    top: window.scrollY + drag.top + (event.clientY - drag.startY),
   });
 }
 
@@ -351,10 +363,33 @@ function handleDialogBackdropClick(event) {
   finishUxDialog(null);
 }
 
+function handleDocumentKeydown(event) {
+  if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) {
+    return;
+  }
+  if (elements.uxDialog.open || !elements.editorDialog.open) {
+    return;
+  }
+  event.preventDefault();
+  closeEditor();
+}
+
+function syncEditorDialogScrollSpace() {
+  if (!elements.editorDialog.open) {
+    document.body.style.minHeight = "";
+    return;
+  }
+  const rect = elements.editorDialog.getBoundingClientRect();
+  const dialogBottom = window.scrollY + rect.bottom;
+  document.body.style.minHeight = `${Math.ceil(dialogBottom + 32)}px`;
+}
+
 function syncDialogScrollLock() {
-  const isDialogOpen = elements.editorDialog.open || elements.uxDialog.open;
-  document.documentElement.classList.toggle("dialog-scroll-locked", isDialogOpen);
-  document.body.classList.toggle("dialog-scroll-locked", isDialogOpen);
+  const shouldLockScroll = elements.uxDialog.open;
+  document.documentElement.classList.toggle("dialog-scroll-locked", shouldLockScroll);
+  document.body.classList.toggle("dialog-scroll-locked", shouldLockScroll);
+  document.body.classList.toggle("editor-dialog-open", elements.editorDialog.open);
+  syncEditorDialogScrollSpace();
 }
 
 async function refreshBoards() {
@@ -611,6 +646,7 @@ const editorModule = createEditorModule({
   confirmAndRun,
   escapeHtml,
   ensureEditorDialogPosition,
+  prepareEditorDialogPosition,
   requestFields,
   refreshBoardDetail,
   sendJson,

@@ -343,6 +343,7 @@ export function createEditorModule(ctx) {
       ctx.api(`/api/tickets/${ticketId}/activity`).catch(() => ({ activity: [] })),
     ]);
     hydrateDialogTicket(ticket, activityPayload.activity ?? []);
+    ctx.syncDialogScrollLock?.();
     return ticket;
   }
 
@@ -393,9 +394,15 @@ export function createEditorModule(ctx) {
     childPicker.syncOptions();
     setDialogMode(ticketId ? mode : "edit");
     detailModule.setDetailTab("comments");
-    elements.editorDialog.showModal();
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    ctx.prepareEditorDialogPosition?.(scrollY);
+    state.editorIgnoreOutsideClickUntil = performance.now() + 100;
+    elements.editorDialog.show();
+    window.scrollTo(scrollX, scrollY);
     ctx.syncDialogScrollLock?.();
     ctx.ensureEditorDialogPosition?.();
+    ctx.syncDialogScrollLock?.();
     if (ticketId) {
       ctx.syncTicketUrl(ticketId);
     }
@@ -549,6 +556,20 @@ export function createEditorModule(ctx) {
     if (!elements.editorDialog.open) {
       return;
     }
+    if (state.editorIgnoreOutsideClickUntil) {
+      if (event.timeStamp <= state.editorIgnoreOutsideClickUntil) {
+        return;
+      }
+      state.editorIgnoreOutsideClickUntil = 0;
+    }
+    const target = event.target;
+    if (!(target instanceof Node)) {
+      return;
+    }
+    const eventPath = event.composedPath?.() ?? [];
+    if (elements.uxDialog.contains(target) || eventPath.includes(elements.uxDialog)) {
+      return;
+    }
     if (tagPicker.handleOptionClick(event)) {
       return;
     }
@@ -562,14 +583,14 @@ export function createEditorModule(ctx) {
       return;
     }
     if (
-      elements.ticketParentToggle.contains(event.target) ||
-      elements.ticketParentOptions.contains(event.target) ||
-      elements.ticketTagToggle.contains(event.target) ||
-      elements.ticketTagOptions.contains(event.target) ||
-      elements.ticketBlockerToggle.contains(event.target) ||
-      elements.ticketBlockerOptions.contains(event.target) ||
-      elements.ticketChildToggle.contains(event.target) ||
-      elements.ticketChildOptions.contains(event.target)
+      elements.ticketParentToggle.contains(target) ||
+      elements.ticketParentOptions.contains(target) ||
+      elements.ticketTagToggle.contains(target) ||
+      elements.ticketTagOptions.contains(target) ||
+      elements.ticketBlockerToggle.contains(target) ||
+      elements.ticketBlockerOptions.contains(target) ||
+      elements.ticketChildToggle.contains(target) ||
+      elements.ticketChildOptions.contains(target)
     ) {
       return;
     }
@@ -577,6 +598,9 @@ export function createEditorModule(ctx) {
     tagPicker.closeOptions();
     blockerPicker.closeOptions();
     childPicker.closeOptions();
+    if (!elements.uxDialog.open && !elements.editorDialog.contains(target) && !eventPath.includes(elements.editorDialog)) {
+      closeEditor();
+    }
   }
 
   return {

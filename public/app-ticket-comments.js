@@ -131,6 +131,7 @@ export function createTicketCommentsModule(ctx) {
     const form = item.querySelector("[data-comment-edit-form]");
     form.hidden = false;
     form.querySelector("[data-comment-edit-body]")?.focus();
+    ctx.syncDialogScrollLock?.();
   }
 
   function cancelCommentInlineEdit(cancelButton) {
@@ -145,6 +146,7 @@ export function createTicketCommentsModule(ctx) {
     }
     form.hidden = true;
     item.querySelector(".comment-display").hidden = false;
+    ctx.syncDialogScrollLock?.();
   }
 
   async function saveCommentInline(saveButton) {
