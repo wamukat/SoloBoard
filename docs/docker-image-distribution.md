@@ -1,8 +1,8 @@
-# Docker Image Distribution Plan
+# Docker Image Distribution Design
 
-This document defines the plan for making SoloBoard distributable as a Docker image.
+This document defines the Docker image distribution design for SoloBoard.
 
-SoloBoard already has a working `Dockerfile` and `docker-compose.yml`. The remaining work is to raise them from local convenience tooling to a documented, repeatable distribution path.
+SoloBoard provides a production-oriented Dockerfile and a Docker Compose file for local deployment.
 
 ## Goals
 
@@ -47,27 +47,45 @@ Supported environment variables:
 Recommended `docker run` usage:
 
 ```bash
+mkdir -p data
 docker run --rm \
   -p 3000:3000 \
   -v "$PWD/data:/app/data" \
   soloboard:local
 ```
 
+When using a bind mount on Linux, the host directory must be writable by UID `1000`, the `node` user inside the image.
+
 Recommended Docker Compose port mapping:
 
 ```yaml
-ports:
-  - "${KANBAN_PORT:-3000}:3000"
+name: soloboard
+
+services:
+  soloboard:
+    # ...
+    ports:
+      - "${KANBAN_PORT:-3000}:3000"
+    volumes:
+      - soloboard-data:/app/data
+
+volumes:
+  soloboard-data:
 ```
 
 The container should keep `PORT=3000` by default. Users should usually change only the host-side port.
 
-## Implementation Plan
+Compose should not set `container_name`. Compose project names are the standard isolation mechanism, and users can override the project name with `docker compose -p <name> up`. With the default project name, the container appears as `soloboard-soloboard-1` instead of an opaque random name.
 
-### Phase 1: Runtime Image Hardening
+Compose should default to a named volume instead of `./data:/app/data`. A bind mount is convenient for direct file access, but on Linux a missing host directory can be created as root-owned before the non-root container starts. A Docker-managed named volume avoids that first-run permission trap.
 
-Update the `Dockerfile`.
+## Implemented Design
 
+### Runtime Image
+
+The `Dockerfile` should keep these properties.
+
+- Add the Dockerfile syntax directive.
 - Keep the existing multi-stage build.
 - Build TypeScript in a build stage.
 - Install only production dependencies for the runtime stage.
@@ -75,7 +93,9 @@ Update the `Dockerfile`.
 - Create `/app/data`.
 - Ensure `/app/data` is writable by the runtime user.
 - Run as a non-root user.
-- Add a `HEALTHCHECK` that calls `GET /api/health`.
+- Add OCI image labels for title, description, and license.
+- Add a `HEALTHCHECK` in exec form that calls `GET /api/health`.
+- Keep `.dockerignore` focused so local data, test output, and development files are not sent as build context.
 
 Acceptance criteria:
 
@@ -84,28 +104,30 @@ Acceptance criteria:
 - `curl http://127.0.0.1:3000/api/health` returns success.
 - Creating a board writes to the mounted `./data` directory.
 
-### Phase 2: Compose Cleanup
+### Compose
 
-Update `docker-compose.yml`.
+The Compose file should keep these properties.
 
+- Set top-level `name: soloboard` for predictable Compose resource names.
 - Keep the service name `soloboard`.
+- Do not set `container_name`; it can collide with other Compose projects and prevents Compose from owning naming cleanly.
 - Map `${KANBAN_PORT:-3000}:3000`.
 - Keep `PORT: 3000` inside the container.
 - Keep `SOLOBOARD_DB_FILE: /app/data/soloboard.sqlite`.
-- Keep `./data:/app/data` for local persistence.
+- Use a named volume for default local persistence.
+- Document bind mounts as an explicit option for users who want direct host-file access.
 - Keep `restart: unless-stopped`.
 
 Acceptance criteria:
 
 - `docker compose up --build` starts the app at `http://127.0.0.1:3000`.
+- `docker compose ps` shows a predictable service container name such as `soloboard-soloboard-1`.
 - `KANBAN_PORT=3457 docker compose up --build` starts the app at `http://127.0.0.1:3457`.
-- The SQLite database remains under `./data/soloboard.sqlite`.
+- The SQLite database is persisted in the `soloboard-data` named volume by default.
 
-### Phase 3: User Documentation
+### User Documentation
 
-Update `README.md`.
-
-Document:
+`README.md` should document:
 
 - Build and run with Docker Compose.
 - Build and run with plain Docker.
@@ -120,7 +142,7 @@ Acceptance criteria:
 - The persistence behavior is explicit.
 - The security assumption is explicit.
 
-### Phase 4: Release Publishing
+### Release Publishing
 
 Add an image publishing workflow when the project is ready to publish images.
 
@@ -174,16 +196,14 @@ pnpm test:e2e
 
 - The SQLite database is the main backup target.
 - The default database path is `/app/data/soloboard.sqlite`.
-- When using Docker Compose, the host copy is `./data/soloboard.sqlite`.
+- When using the default Docker Compose setup, the database is stored in the `soloboard-data` named volume.
+- When using a bind mount, the host copy is typically `./data/soloboard.sqlite`.
 - Stop the container before copying the database for a simple consistent backup.
 - Do not run multiple SoloBoard containers against the same SQLite file.
 - Do not expose the app directly to the public internet; SoloBoard currently has no authentication.
 
-## Proposed Work Order
+## Remaining Work
 
-1. Harden `Dockerfile`.
-2. Clean up `docker-compose.yml`.
-3. Update `README.md`.
-4. Verify local Docker build and runtime behavior.
-5. Add CI image build.
-6. Add registry publishing after release/version policy is decided.
+1. Add CI image build.
+2. Add registry publishing after release/version policy is decided.
+3. Add version and revision OCI labels from CI when images are published.

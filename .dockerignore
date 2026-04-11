@@ -2,5 +2,15 @@ node_modules
 dist
 data
 .git
+.gitignore
 .DS_Store
 *.log
+coverage
+test-results
+.env
+.env.*
+docs
+scripts
+test
+*.md
+playwright.config.ts

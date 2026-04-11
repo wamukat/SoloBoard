@@ -89,15 +89,43 @@ http://127.0.0.1:3000
 
 ## Docker
 
-Detailed distribution plan: [docs/docker-image-distribution.md](docs/docker-image-distribution.md)
+Detailed distribution design: [docs/docker-image-distribution.md](docs/docker-image-distribution.md)
 
-Build and run with Docker Compose:
+Build the image:
+
+```bash
+docker build -t soloboard:local .
+```
+
+Run with Docker:
+
+```bash
+mkdir -p data
+docker run --rm \
+  -p 3000:3000 \
+  -v "$PWD/data:/app/data" \
+  soloboard:local
+```
+
+Run with Docker Compose:
 
 ```bash
 docker compose up --build
 ```
 
-Change the exposed port:
+The Compose project name is set to `soloboard`, so the default container name is predictable:
+
+```text
+soloboard-soloboard-1
+```
+
+To run a second independent copy on the same machine, override the project name:
+
+```bash
+docker compose -p soloboard-dev up --build
+```
+
+Change the host port:
 
 ```bash
 KANBAN_PORT=3457 docker compose up --build
@@ -106,8 +134,29 @@ KANBAN_PORT=3457 docker compose up --build
 The database file is stored under:
 
 ```text
+/app/data/soloboard.sqlite
+```
+
+Docker Compose stores it in the `soloboard-data` named volume by default. For a host-directory bind mount instead, replace the Compose volume with:
+
+```yaml
+volumes:
+  - ./data:/app/data
+```
+
+When using a bind mount on Linux, create `./data` before starting the container and make sure it is writable by UID `1000`, the `node` user inside the image.
+
+Plain `docker run` with the command above stores the host copy under:
+
+```text
 ./data/soloboard.sqlite
 ```
+
+The container listens on port `3000`. `KANBAN_PORT` changes only the host-side port mapping.
+
+Back up the app by stopping the container and copying the SQLite database file.
+
+SoloBoard does not include authentication. Do not expose it directly to untrusted networks.
 
 ## Performance Tooling
 
