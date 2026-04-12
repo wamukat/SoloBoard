@@ -47,7 +47,7 @@ export function createEditorModule(ctx) {
   }
 
   function renderTicketOption(ticket, attrName, isSelected) {
-    const meta = ticket.isCompleted ? '<span class="ticket-picker-meta">Done</span>' : "";
+    const meta = ticket.isResolved ? '<span class="ticket-picker-meta">Resolved</span>' : "";
     return `
       <button type="button" class="tag-picker-item ${isSelected ? "selected" : ""}" ${attrName}="${ticket.id}" role="option" aria-selected="${isSelected}">
         <span class="ticket-picker-id">#${ticket.id}</span>
@@ -311,7 +311,7 @@ export function createEditorModule(ctx) {
     elements.ticketComments.innerHTML = commentsModule.renderComments(ticket.comments ?? []);
     elements.ticketTitle.value = ticket.title;
     elements.ticketPriority.value = String(ticket.priority ?? 0);
-    elements.ticketCompleted.checked = ticket.isCompleted;
+    elements.ticketResolved.checked = ticket.isResolved;
     elements.ticketBody.value = ticket.bodyMarkdown;
     elements.ticketLane.value = String(ticket.laneId);
     elements.ticketParent.value = ticket.parentTicketId == null ? "" : String(ticket.parentTicketId);
@@ -357,7 +357,7 @@ export function createEditorModule(ctx) {
     const activity = ticketId ? ((await ctx.api(`/api/tickets/${ticketId}/activity`).catch(() => ({ activity: [] }))).activity ?? []) : [];
     elements.ticketTitle.value = ticket?.title ?? "";
     elements.ticketPriority.value = String(ticket?.priority ?? 0);
-    elements.ticketCompleted.checked = ticket?.isCompleted ?? false;
+    elements.ticketResolved.checked = ticket?.isResolved ?? false;
     elements.ticketBody.value = ticket?.bodyMarkdown ?? "";
     detailModule.syncTicketDetail(ticket, activity);
     elements.ticketComments.innerHTML = commentsModule.renderComments(ticket?.comments ?? []);
@@ -369,7 +369,7 @@ export function createEditorModule(ctx) {
     elements.ticketParent.value = ticket?.parentTicketId == null ? "" : String(ticket.parentTicketId);
     elements.deleteTicketButton.hidden = !ticketId;
     elements.commentForm.hidden = !ticketId;
-    elements.ticketCompletedRow.hidden = !ticketId;
+    elements.ticketResolvedRow.hidden = !ticketId;
     elements.archiveTicketButton.hidden = !ticketId;
     if (!ticketId && defaultLaneId != null) {
       elements.ticketLane.value = String(defaultLaneId);
@@ -422,7 +422,7 @@ export function createEditorModule(ctx) {
       laneId: Number(elements.ticketLane.value),
       parentTicketId: nextParentTicketId,
       priority: Number(elements.ticketPriority.value || 0),
-      isCompleted: elements.ticketCompleted.checked,
+      isResolved: elements.ticketResolved.checked,
       bodyMarkdown: elements.ticketBody.value,
       tagIds,
       blockerIds,

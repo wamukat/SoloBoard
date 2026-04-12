@@ -11,6 +11,20 @@ function createDbFile(): string {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), "soloboard-test-")), "test.sqlite");
 }
 
+test("migration creates archive-aware ticket indexes", () => {
+  const db = new KanbanDb(createDbFile());
+  try {
+    const indexes = db.sqlite.prepare("PRAGMA index_list(tickets)").all() as Array<{ name: string }>;
+    const indexNames = new Set(indexes.map((index) => index.name));
+    assert.ok(indexNames.has("tickets_active_board_lane_position_idx"));
+    assert.ok(indexNames.has("tickets_active_board_resolved_lane_position_idx"));
+    assert.ok(indexNames.has("tickets_archived_board_lane_position_idx"));
+    assert.ok(indexNames.has("tickets_lane_archived_position_idx"));
+  } finally {
+    db.close();
+  }
+});
+
 test("board lifecycle, ticket filters, reorder, and export/import", async () => {
   const app = buildApp({
     dbFile: createDbFile(),
@@ -51,11 +65,13 @@ test("board lifecycle, ticket filters, reorder, and export/import", async () => 
       bodyMarkdown: "Needs **attention**",
       priority: 5,
       tagIds: [bugTag.id],
-      isCompleted: false,
+      isResolved: false,
     },
   });
   assert.equal(firstTicketResponse.statusCode, 201);
   const firstTicket = firstTicketResponse.json();
+  assert.equal(firstTicket.isResolved, false);
+  assert.equal(firstTicket.isCompleted, false);
 
   const secondTicketResponse = await app.inject({
     method: "POST",
@@ -67,10 +83,12 @@ test("board lifecycle, ticket filters, reorder, and export/import", async () => 
       bodyMarkdown: "Link [guide](https://example.com)",
       priority: 2,
       tagIds: [docsTag.id],
-      isCompleted: true,
+      isResolved: true,
     },
   });
   const secondTicket = secondTicketResponse.json();
+  assert.equal(secondTicket.isResolved, true);
+  assert.equal(secondTicket.isCompleted, true);
   assert.equal(secondTicket.priority, 2);
   assert.equal(secondTicket.parentTicketId, firstTicket.id);
   assert.deepEqual(secondTicket.blockerIds, []);
@@ -105,6 +123,46 @@ test("board lifecycle, ticket filters, reorder, and export/import", async () => 
   assert.equal(filtered.tickets[0].shortRef, `#${firstTicket.id}`);
   assert.ok(!("bodyHtml" in filtered.tickets[0]));
 
+  const idFilteredResponse = await app.inject({
+    method: "GET",
+    url: `/api/boards/${boardId}/tickets?q=${firstTicket.id}`,
+  });
+  assert.equal(idFilteredResponse.statusCode, 200);
+  assert.deepEqual(
+    idFilteredResponse.json().tickets.map((ticket: { id: number }) => ticket.id),
+    [firstTicket.id],
+  );
+
+  const shortRefFilteredResponse = await app.inject({
+    method: "GET",
+    url: `/api/boards/${boardId}/tickets?q=%23${firstTicket.id}`,
+  });
+  assert.equal(shortRefFilteredResponse.statusCode, 200);
+  assert.deepEqual(
+    shortRefFilteredResponse.json().tickets.map((ticket: { id: number }) => ticket.id),
+    [firstTicket.id],
+  );
+
+  const priorityFilteredResponse = await app.inject({
+    method: "GET",
+    url: `/api/boards/${boardId}/tickets?q=p%3A5`,
+  });
+  assert.equal(priorityFilteredResponse.statusCode, 200);
+  assert.deepEqual(
+    priorityFilteredResponse.json().tickets.map((ticket: { id: number }) => ticket.id),
+    [firstTicket.id],
+  );
+
+  const priorityAliasFilteredResponse = await app.inject({
+    method: "GET",
+    url: `/api/boards/${boardId}/tickets?q=priority%3A2`,
+  });
+  assert.equal(priorityAliasFilteredResponse.statusCode, 200);
+  assert.deepEqual(
+    priorityAliasFilteredResponse.json().tickets.map((ticket: { id: number }) => ticket.id),
+    [secondTicket.id],
+  );
+
   const commentResponse = await app.inject({
     method: "POST",
     url: `/api/tickets/${firstTicket.id}/comments`,
@@ -121,7 +179,7 @@ test("board lifecycle, ticket filters, reorder, and export/import", async () => 
   });
   assert.equal(updateResponse.statusCode, 200);
   assert.equal(updateResponse.json().laneId, doingLane.id);
-  assert.equal(updateResponse.json().isCompleted, false);
+  assert.equal(updateResponse.json().isResolved, false);
   assert.equal(updateResponse.json().priority, 7);
   assert.equal(updateResponse.json().children.length, 1);
   assert.deepEqual(updateResponse.json().blockerIds, [secondTicket.id]);
@@ -389,11 +447,11 @@ test("comment list, relations, transition, and canonical refs", async () => {
   const transitionResponse = await app.inject({
     method: "PATCH",
     url: `/api/tickets/${parent.id}/transition`,
-    payload: { laneName: "Done", isCompleted: true },
+    payload: { laneName: "Done", isResolved: true },
   });
   assert.equal(transitionResponse.statusCode, 200);
   assert.equal(transitionResponse.json().laneId, board.lanes[2].id);
-  assert.equal(transitionResponse.json().isCompleted, true);
+  assert.equal(transitionResponse.json().isResolved, true);
   assert.equal(transitionResponse.json().ref, `Portal#${parent.id}`);
 
   const archiveResponse = await app.inject({
@@ -608,7 +666,7 @@ test("reordering visible tickets preserves stable archived positions on restore"
   db.close();
 });
 
-test("bulk complete and bulk transition operate on board ticket sets", async () => {
+test("bulk resolve and bulk transition operate on board ticket sets", async () => {
   const app = buildApp({
     dbFile: createDbFile(),
     staticDir: path.join(process.cwd(), "public"),
@@ -634,34 +692,34 @@ test("bulk complete and bulk transition operate on board ticket sets", async () 
     payload: { laneId: doingLane.id, title: "Two" },
   })).json();
 
-  const bulkComplete = await app.inject({
+  const bulkResolve = await app.inject({
     method: "POST",
     url: `/api/boards/${board.board.id}/tickets/bulk-complete`,
-    payload: { ticketIds: [first.id, second.id], isCompleted: true },
+    payload: { ticketIds: [first.id, second.id], isResolved: true },
   });
-  assert.equal(bulkComplete.statusCode, 200);
+  assert.equal(bulkResolve.statusCode, 200);
   assert.deepEqual(
-    bulkComplete.json().tickets.map((ticket: { id: number; isCompleted: boolean }) => [ticket.id, ticket.isCompleted]),
+    bulkResolve.json().tickets.map((ticket: { id: number; isResolved: boolean }) => [ticket.id, ticket.isResolved]),
     [[first.id, true], [second.id, true]],
   );
 
   const bulkTransition = await app.inject({
     method: "POST",
     url: `/api/boards/${board.board.id}/tickets/bulk-transition`,
-    payload: { ticketIds: [first.id, second.id], laneName: "Done", isCompleted: true },
+    payload: { ticketIds: [first.id, second.id], laneName: "Done", isResolved: true },
   });
   assert.equal(bulkTransition.statusCode, 200);
   const transitioned = bulkTransition.json().tickets;
   assert.equal(transitioned.length, 2);
-  assert.ok(transitioned.every((ticket: { laneId: number; isCompleted: boolean }) => ticket.laneId === doneLane.id));
-  assert.ok(transitioned.every((ticket: { isCompleted: boolean }) => ticket.isCompleted === true));
+  assert.ok(transitioned.every((ticket: { laneId: number; isResolved: boolean }) => ticket.laneId === doneLane.id));
+  assert.ok(transitioned.every((ticket: { isResolved: boolean }) => ticket.isResolved === true));
 
   const detailOne = await app.inject({
     method: "GET",
     url: `/api/tickets/${first.id}`,
   });
   assert.equal(detailOne.json().laneId, doneLane.id);
-  assert.equal(detailOne.json().isCompleted, true);
+  assert.equal(detailOne.json().isResolved, true);
 
   const bulkArchive = await app.inject({
     method: "POST",
@@ -696,7 +754,7 @@ test("bulk complete and bulk transition operate on board ticket sets", async () 
   const missingTicket = await app.inject({
     method: "POST",
     url: `/api/boards/${board.board.id}/tickets/bulk-complete`,
-    payload: { ticketIds: [first.id, 99999], isCompleted: false },
+    payload: { ticketIds: [first.id, 99999], isResolved: false },
   });
   assert.equal(missingTicket.statusCode, 400);
 

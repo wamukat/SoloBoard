@@ -21,7 +21,7 @@ const state = {
   filters: {
     q: "",
     lane: "",
-    completed: "false",
+    resolved: "false",
     tag: "",
     archived: "",
   },
@@ -67,8 +67,8 @@ const elements = {
   laneFilter: document.querySelector("#lane-filter"),
   archivedFilterButton: document.querySelector("#archived-filter-button"),
   viewModeButtons: [...document.querySelectorAll("#view-mode-toggle button")],
-  completedFilter: document.querySelector("#completed-filter"),
-  completedFilterButtons: [...document.querySelectorAll("#completed-filter button")],
+  resolvedFilter: document.querySelector("#resolved-filter"),
+  resolvedFilterButtons: [...document.querySelectorAll("#resolved-filter button")],
   tagFilter: document.querySelector("#tag-filter"),
   exportBoardButton: document.querySelector("#export-board-button"),
   importBoardInput: document.querySelector("#import-board-input"),
@@ -102,7 +102,7 @@ const elements = {
   ticketParentSearch: document.querySelector("#ticket-parent-search"),
   ticketParentOptions: document.querySelector("#ticket-parent-options"),
   ticketPriority: document.querySelector("#ticket-priority"),
-  ticketCompleted: document.querySelector("#ticket-completed"),
+  ticketResolved: document.querySelector("#ticket-resolved"),
   ticketNewTagButton: document.querySelector("#ticket-new-tag-button"),
   ticketTagToggle: document.querySelector("#ticket-tag-toggle"),
   ticketTagSummary: document.querySelector("#ticket-tag-summary"),
@@ -119,7 +119,7 @@ const elements = {
   ticketChildOptions: document.querySelector("#ticket-child-options"),
   ticketBody: document.querySelector("#ticket-body"),
   deleteTicketButton: document.querySelector("#delete-ticket-button"),
-  ticketCompletedRow: document.querySelector("#ticket-completed-row"),
+  ticketResolvedRow: document.querySelector("#ticket-resolved-row"),
   cancelEditButton: document.querySelector("#cancel-edit-button"),
   uxDialog: document.querySelector("#ux-dialog"),
   uxForm: document.querySelector("#ux-form"),
@@ -137,7 +137,7 @@ const elements = {
 async function main() {
   bindEvents();
   syncSidebar();
-  syncCompletedFilter();
+  syncResolvedFilter();
   syncArchivedFilter();
   syncViewMode();
   await refreshBoards();
@@ -203,10 +203,10 @@ function bindEvents() {
     syncArchivedFilter();
     await refreshBoardDetail();
   });
-  elements.completedFilterButtons.forEach((button) => {
+  elements.resolvedFilterButtons.forEach((button) => {
     button.addEventListener("click", async () => {
-      state.filters.completed = button.dataset.value ?? "";
-      syncCompletedFilter();
+      state.filters.resolved = button.dataset.value ?? "";
+      syncResolvedFilter();
       await refreshBoardDetail();
     });
   });
@@ -403,10 +403,10 @@ async function refreshBoards() {
 }
 
 function resetBoardFilters() {
-  state.filters = { q: "", lane: "", completed: "false", tag: "", archived: "" };
+  state.filters = { q: "", lane: "", resolved: "false", tag: "", archived: "" };
   elements.searchInput.value = "";
   elements.laneFilter.value = "";
-  syncCompletedFilter();
+  syncResolvedFilter();
   syncArchivedFilter();
   elements.tagFilter.value = "";
 }
@@ -435,8 +435,8 @@ async function refreshBoardDetail() {
     if (filters.lane ?? state.filters.lane) {
       params.set("lane_id", String(filters.lane ?? state.filters.lane));
     }
-    if (filters.completed ?? state.filters.completed) {
-      params.set("completed", String(filters.completed ?? state.filters.completed));
+    if (filters.resolved ?? state.filters.resolved) {
+      params.set("resolved", String(filters.resolved ?? state.filters.resolved));
     }
     if (filters.tag ?? state.filters.tag) {
       params.set("tag", String(filters.tag ?? state.filters.tag));
@@ -732,9 +732,9 @@ main().catch((error) => {
   showToast(error.message, "error");
 });
 
-function syncCompletedFilter(value = state.filters.completed) {
-  state.filters.completed = value;
-  elements.completedFilterButtons.forEach((button) => {
+function syncResolvedFilter(value = state.filters.resolved) {
+  state.filters.resolved = value;
+  elements.resolvedFilterButtons.forEach((button) => {
     button.classList.toggle("active", (button.dataset.value ?? "") === value);
   });
 }

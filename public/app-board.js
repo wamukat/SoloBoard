@@ -10,7 +10,28 @@ export function createBoardModule(ctx) {
   let kanbanRenderToken = 0;
   let kanbanNextLaneIndex = 0;
 
+  function renderEmptyState({ iconName, title, body, actionLabel = "", actionAttr = "" }) {
+    const action = actionLabel && actionAttr
+      ? `<button type="button" class="empty-state-action action-with-icon" ${actionAttr}>${icon("plus")}<span>${actionLabel}</span></button>`
+      : "";
+    return `
+      <div class="empty-state">
+        <span class="empty-state-icon">${icon(iconName)}</span>
+        <strong>${ctx.escapeHtml(title)}</strong>
+        <p>${ctx.escapeHtml(body)}</p>
+        ${action}
+      </div>
+    `;
+  }
+
   function renderBoards() {
+    const hasBoards = state.boards.length > 0;
+    if (!hasBoards && state.sidebarCollapsed) {
+      state.sidebarCollapsed = false;
+      localStorage.setItem("soloboard:sidebar-collapsed", "false");
+      syncSidebar();
+    }
+    elements.shell.classList.toggle("no-boards", !hasBoards);
     elements.boardList.innerHTML = "";
     for (const board of state.boards) {
       const button = document.createElement("button");
@@ -30,6 +51,13 @@ export function createBoardModule(ctx) {
       elements.boardList.append(createBoardInputRow());
     }
     elements.newBoardButton.hidden = state.isCreatingBoard;
+    const shouldGuideBoardCreate = !hasBoards && !state.isCreatingBoard;
+    elements.newBoardButton.classList.toggle("is-empty-target", shouldGuideBoardCreate);
+    elements.newBoardButton.title = shouldGuideBoardCreate ? "Create your first board" : "New board";
+    elements.newBoardButton.setAttribute(
+      "aria-label",
+      shouldGuideBoardCreate ? "Create your first board" : "New board",
+    );
   }
 
   function createBoardInputRow() {
@@ -71,9 +99,17 @@ export function createBoardModule(ctx) {
       elements.tagFilter.innerHTML = '<option value="">All tags</option>';
       elements.laneFilter.innerHTML = '<option value="">All lanes</option>';
       elements.laneBoard.className = "lane-board empty";
-      elements.laneBoard.innerHTML = '<div class="empty-state"><p>Create a board to start tracking tasks.</p></div>';
+      elements.laneBoard.innerHTML = renderEmptyState({
+        iconName: "columns-3",
+        title: "No boards yet",
+        body: "Use the + button in the sidebar to create your first board.",
+      });
       elements.listBoard.className = "list-board empty";
-      elements.listBoard.innerHTML = '<div class="empty-state"><p>Create a board to start tracking tasks.</p></div>';
+      elements.listBoard.innerHTML = renderEmptyState({
+        iconName: "columns-3",
+        title: "No boards yet",
+        body: "Use the + button in the sidebar to create your first board.",
+      });
       state.selectedListTicketIds = [];
       kanbanRenderToken += 1;
       kanbanNextLaneIndex = 0;
@@ -119,6 +155,7 @@ export function createBoardModule(ctx) {
     elements.laneBoard.className = "lane-board";
     elements.laneBoard.innerHTML = "";
     const laneQueues = [];
+    const hasFilter = hasUserTicketFilters();
 
     for (const lane of detail.lanes.sort((a, b) => a.position - b.position)) {
       const laneTickets = detail.tickets.filter((item) => item.laneId === lane.id).sort((a, b) => a.position - b.position);
@@ -145,6 +182,14 @@ export function createBoardModule(ctx) {
       const list = document.createElement("div");
       list.className = "ticket-list";
       list.dataset.laneId = String(lane.id);
+      if (laneTickets.length === 0 && hasFilter) {
+        list.innerHTML = `
+          <div class="lane-empty-note">
+            <span>${icon("search")}</span>
+            <p>No matching tickets</p>
+          </div>
+        `;
+      }
       bindDropZone(list);
 
       const addTicketButton = document.createElement("button");
@@ -251,7 +296,22 @@ export function createBoardModule(ctx) {
     state.selectedListTicketIds = state.selectedListTicketIds.filter((ticketId) => detail.tickets.some((ticket) => ticket.id === ticketId));
     if (detail.tickets.length === 0) {
       elements.listBoard.className = "list-board empty";
-      elements.listBoard.innerHTML = '<div class="empty-state"><p>No tickets match the current filters.</p></div>';
+      const firstLaneId = state.boardDetail?.lanes?.[0]?.id;
+      elements.listBoard.innerHTML = hasUserTicketFilters()
+        ? renderEmptyState({
+          iconName: "search",
+          title: "No matching tickets",
+          body: "Try a different search, tag, lane, or resolved filter.",
+        })
+        : renderEmptyState({
+          iconName: "list",
+          title: state.filters.resolved === "false" ? "No unresolved tickets" : "No tickets yet",
+          body: state.filters.resolved === "false"
+            ? "Create a ticket or switch the resolved filter to All."
+            : "Create the first ticket, then switch between Kanban and List as it grows.",
+          actionLabel: firstLaneId ? "Create ticket" : "",
+          actionAttr: firstLaneId ? `data-empty-create-ticket="${firstLaneId}"` : "",
+        });
       listModel = null;
       return;
     }
@@ -298,11 +358,11 @@ export function createBoardModule(ctx) {
       return '<div class="list-actions list-actions-empty"><span>Select tickets to edit in bulk</span></div>';
     }
     const buttons = [];
-    if (selectedTickets.some((ticket) => !ticket.isCompleted)) {
-      buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-complete="true">${icon("check")}<span>Mark Done</span></button>`);
+    if (selectedTickets.some((ticket) => !ticket.isResolved)) {
+      buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-resolve="true">${icon("check")}<span>Mark Resolved</span></button>`);
     }
-    if (selectedTickets.some((ticket) => ticket.isCompleted)) {
-      buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-complete="false">${icon("circle")}<span>Mark Open</span></button>`);
+    if (selectedTickets.some((ticket) => ticket.isResolved)) {
+      buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-resolve="false">${icon("circle")}<span>Reopen</span></button>`);
     }
     if (selectedTickets.some((ticket) => !ticket.isArchived)) {
       buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-archive="true">${icon("archive")}<span>Archive</span></button>`);
@@ -317,6 +377,14 @@ export function createBoardModule(ctx) {
         ${buttons.join("")}
       </div>
     `;
+  }
+
+  function hasUserTicketFilters() {
+    return state.filters.q !== ""
+      || state.filters.lane !== ""
+      || state.filters.tag !== ""
+      || state.filters.archived !== ""
+      || (state.filters.resolved !== "" && state.filters.resolved !== "false");
   }
 
   function getListTickets(tickets) {
@@ -355,7 +423,7 @@ export function createBoardModule(ctx) {
       ? `blocked by ${blockedByTickets
           .map(
             (blocker) =>
-              `<span class="ticket-ref-inline${blocker.isCompleted ? " ticket-ref-completed" : ""}">#${blocker.id}</span>`,
+              `<span class="ticket-ref-inline${blocker.isResolved ? " ticket-ref-resolved" : ""}">#${blocker.id}</span>`,
           )
           .join(", ")}`
       : "";
@@ -363,7 +431,7 @@ export function createBoardModule(ctx) {
       .filter((candidate) => candidate.id !== ticket.id && candidate.blockerIds.includes(ticket.id))
       .map(
         (candidate) =>
-          `<span class="ticket-ref-inline${candidate.isCompleted ? " ticket-ref-completed" : ""}">#${candidate.id}</span>`,
+          `<span class="ticket-ref-inline${candidate.isResolved ? " ticket-ref-resolved" : ""}">#${candidate.id}</span>`,
       );
     const relations = [
       blockedBy,
@@ -372,7 +440,7 @@ export function createBoardModule(ctx) {
     const lane = state.boardDetail.lanes.find((item) => item.id === ticket.laneId);
     const statusIcons = renderTicketStatusIcons(ticket);
     return `
-      <div class="list-row ${ticket.isCompleted ? "completed" : ""} ${ticket.isArchived ? "archived" : ""}" style="height:${LIST_ROW_HEIGHT}px">
+      <div class="list-row ${ticket.isResolved ? "resolved" : ""} ${ticket.isArchived ? "archived" : ""}" style="height:${LIST_ROW_HEIGHT}px">
         <input type="checkbox" data-list-ticket-id="${ticket.id}" ${state.selectedListTicketIds.includes(ticket.id) ? "checked" : ""} />
         <button type="button" class="list-ticket-link indent-${indent}" data-open-ticket-id="${ticket.id}">
           <span class="ticket-id">#${ticket.id}</span>
@@ -408,14 +476,14 @@ export function createBoardModule(ctx) {
     windowEl.innerHTML = visibleEntries.map(renderListRow).join("");
   }
 
-  async function updateSelectedListTickets(isCompleted) {
+  async function updateSelectedListTickets(isResolved) {
     const ticketIds = [...state.selectedListTicketIds];
     if (ticketIds.length === 0) {
       return;
     }
     await ctx.sendJson(`/api/boards/${state.activeBoardId}/tickets/bulk-complete`, {
       method: "POST",
-      body: { ticketIds, isCompleted },
+      body: { ticketIds, isResolved },
     });
     state.selectedListTicketIds = [];
     await ctx.refreshBoardDetail();
@@ -512,7 +580,7 @@ export function createBoardModule(ctx) {
 
   function createTicketCard(ticket) {
     const card = document.createElement("article");
-    card.className = `ticket-card ${ticket.isCompleted ? "completed" : ""} ${ticket.isArchived ? "archived" : ""}`;
+    card.className = `ticket-card ${ticket.isResolved ? "resolved" : ""} ${ticket.isArchived ? "archived" : ""}`;
     card.draggable = true;
     card.dataset.ticketId = String(ticket.id);
     const statusIcons = renderTicketStatusIcons(ticket);
@@ -543,8 +611,8 @@ export function createBoardModule(ctx) {
 
   function renderTicketStatusIcons(ticket) {
     return [
-      ticket.isCompleted
-        ? `<span class="ticket-status-icon ticket-status-icon-done" title="Done" aria-label="Done">${icon("check")}</span>`
+      ticket.isResolved
+        ? `<span class="ticket-status-icon ticket-status-icon-resolved" title="Resolved" aria-label="Resolved">${icon("check")}</span>`
         : "",
       ticket.isArchived
         ? `<span class="ticket-status-icon ticket-status-icon-archived" title="Archived" aria-label="Archived">${icon("archive")}</span>`
@@ -954,6 +1022,11 @@ export function createBoardModule(ctx) {
   }
 
   function handleListBoardClick(event) {
+    const createTicketButton = event.target.closest("[data-empty-create-ticket]");
+    if (createTicketButton && elements.listBoard.contains(createTicketButton)) {
+      ctx.openEditor(null, "edit", Number(createTicketButton.dataset.emptyCreateTicket));
+      return;
+    }
     const openButton = event.target.closest("[data-open-ticket-id]");
     if (openButton && elements.listBoard.contains(openButton)) {
       ctx.openEditor(Number(openButton.dataset.openTicketId), "view");
@@ -969,7 +1042,7 @@ export function createBoardModule(ctx) {
         updateSelectedListArchive(bulkButton.dataset.bulkArchive === "true");
         return;
       }
-      updateSelectedListTickets(bulkButton.dataset.bulkComplete === "true");
+      updateSelectedListTickets(bulkButton.dataset.bulkResolve === "true");
     }
   }
 

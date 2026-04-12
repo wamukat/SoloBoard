@@ -27,7 +27,7 @@ import { renderMarkdown } from "./markdown.js";
 type ListTicketsFilters = {
   laneId?: number;
   tag?: string;
-  completed?: boolean;
+  resolved?: boolean;
   q?: string;
   archived?: boolean;
   includeArchived?: boolean;
@@ -54,7 +54,7 @@ type CreateTicketInput = {
   laneId: Id;
   title: string;
   bodyMarkdown?: string;
-  isCompleted?: boolean;
+  isResolved?: boolean;
   isArchived?: boolean;
   priority?: number;
   parentTicketId?: Id | null;
@@ -82,17 +82,17 @@ type ReorderTicketInput = {
   position: number;
 };
 
-type BulkCompleteTicketsInput = {
+type BulkResolveTicketsInput = {
   boardId: Id;
   ticketIds: Id[];
-  isCompleted: boolean;
+  isResolved: boolean;
 };
 
 type BulkTransitionTicketsInput = {
   boardId: Id;
   ticketIds: Id[];
   laneName: string;
-  isCompleted?: boolean;
+  isResolved?: boolean;
 };
 
 type BulkArchiveTicketsInput = {
@@ -106,7 +106,7 @@ type TicketRelationRow = {
   id: Id;
   title: string;
   lane_id: Id;
-  is_completed: number;
+  is_resolved: number;
   priority: number;
   board_name: string;
 };
@@ -165,7 +165,7 @@ export class KanbanDb {
         parent_ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL,
         title TEXT NOT NULL,
         body_markdown TEXT NOT NULL DEFAULT '',
-        is_completed INTEGER NOT NULL DEFAULT 0,
+        is_resolved INTEGER NOT NULL DEFAULT 0,
         is_archived INTEGER NOT NULL DEFAULT 0,
         priority INTEGER NOT NULL DEFAULT 0,
         position INTEGER NOT NULL,
@@ -206,12 +206,6 @@ export class KanbanDb {
       CREATE INDEX IF NOT EXISTS tickets_board_lane_position_idx
       ON tickets(board_id, lane_id, position, id);
 
-      CREATE INDEX IF NOT EXISTS tickets_board_completed_lane_position_idx
-      ON tickets(board_id, is_completed, lane_id, position, id);
-
-      CREATE INDEX IF NOT EXISTS tickets_parent_ticket_idx
-      ON tickets(parent_ticket_id);
-
       CREATE INDEX IF NOT EXISTS comments_ticket_created_idx
       ON comments(ticket_id, created_at, id);
 
@@ -225,7 +219,16 @@ export class KanbanDb {
       ON activity_logs(ticket_id, created_at, id);
     `);
 
-    const ticketColumns = this.sqlite.prepare("PRAGMA table_info(tickets)").all() as Array<{ name: string }>;
+    let ticketColumns = this.sqlite.prepare("PRAGMA table_info(tickets)").all() as Array<{ name: string }>;
+    if (ticketColumns.some((column) => column.name === "is_completed")
+      && !ticketColumns.some((column) => column.name === "is_resolved")) {
+      this.sqlite.exec("ALTER TABLE tickets RENAME COLUMN is_completed TO is_resolved");
+      ticketColumns = this.sqlite.prepare("PRAGMA table_info(tickets)").all() as Array<{ name: string }>;
+    }
+    if (!ticketColumns.some((column) => column.name === "is_resolved")) {
+      this.sqlite.exec("ALTER TABLE tickets ADD COLUMN is_resolved INTEGER NOT NULL DEFAULT 0");
+      ticketColumns = this.sqlite.prepare("PRAGMA table_info(tickets)").all() as Array<{ name: string }>;
+    }
     const boardColumns = this.sqlite.prepare("PRAGMA table_info(boards)").all() as Array<{ name: string }>;
     if (!boardColumns.some((column) => column.name === "position")) {
       this.sqlite.exec("ALTER TABLE boards ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
@@ -240,6 +243,31 @@ export class KanbanDb {
     if (!ticketColumns.some((column) => column.name === "is_archived")) {
       this.sqlite.exec("ALTER TABLE tickets ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0");
     }
+    this.sqlite.exec(`
+      DROP INDEX IF EXISTS tickets_board_completed_lane_position_idx;
+      DROP INDEX IF EXISTS tickets_active_board_completed_lane_position_idx;
+
+      CREATE INDEX IF NOT EXISTS tickets_board_resolved_lane_position_idx
+      ON tickets(board_id, is_resolved, lane_id, position, id);
+
+      CREATE INDEX IF NOT EXISTS tickets_active_board_lane_position_idx
+      ON tickets(board_id, lane_id, position, id)
+      WHERE is_archived = 0;
+
+      CREATE INDEX IF NOT EXISTS tickets_active_board_resolved_lane_position_idx
+      ON tickets(board_id, is_resolved, lane_id, position, id)
+      WHERE is_archived = 0;
+
+      CREATE INDEX IF NOT EXISTS tickets_archived_board_lane_position_idx
+      ON tickets(board_id, lane_id, position, id)
+      WHERE is_archived = 1;
+
+      CREATE INDEX IF NOT EXISTS tickets_lane_archived_position_idx
+      ON tickets(lane_id, is_archived, position, id);
+
+      CREATE INDEX IF NOT EXISTS tickets_parent_ticket_idx
+      ON tickets(parent_ticket_id);
+    `);
 
     const activityColumns = this.sqlite.prepare("PRAGMA table_info(activity_logs)").all() as Array<{
       name: string;
@@ -546,7 +574,7 @@ export class KanbanDb {
         .prepare(
           `
           INSERT INTO tickets (
-            board_id, lane_id, parent_ticket_id, title, body_markdown, is_completed, is_archived, priority, position, created_at, updated_at
+            board_id, lane_id, parent_ticket_id, title, body_markdown, is_resolved, is_archived, priority, position, created_at, updated_at
           )
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
@@ -557,7 +585,7 @@ export class KanbanDb {
           this.validateParentTicket(null, input.parentTicketId, input.boardId),
           input.title,
           input.bodyMarkdown ?? "",
-          input.isCompleted ? 1 : 0,
+          input.isResolved ? 1 : 0,
           input.isArchived ? 1 : 0,
           sanitizePriority(input.priority),
           position,
@@ -586,7 +614,7 @@ export class KanbanDb {
         .prepare(
           `
           UPDATE tickets
-          SET board_id = ?, lane_id = ?, parent_ticket_id = ?, title = ?, body_markdown = ?, is_completed = ?, is_archived = ?, priority = ?, updated_at = ?
+          SET board_id = ?, lane_id = ?, parent_ticket_id = ?, title = ?, body_markdown = ?, is_resolved = ?, is_archived = ?, priority = ?, updated_at = ?
           WHERE id = ?
           `,
         )
@@ -600,7 +628,7 @@ export class KanbanDb {
           ),
           input.title ?? current.title,
           input.bodyMarkdown ?? current.bodyMarkdown,
-          typeof input.isCompleted === "boolean" ? Number(input.isCompleted) : Number(current.isCompleted),
+          typeof input.isResolved === "boolean" ? Number(input.isResolved) : Number(current.isResolved),
           typeof input.isArchived === "boolean" ? Number(input.isArchived) : Number(current.isArchived),
           input.priority == null ? current.priority : sanitizePriority(input.priority),
           this.now(),
@@ -625,14 +653,14 @@ export class KanbanDb {
         this.normalizeVisibleAndArchivedTicketPositions(nextLaneId);
       }
       const nextArchived = typeof input.isArchived === "boolean" ? input.isArchived : current.isArchived;
-      const nextCompleted = typeof input.isCompleted === "boolean" ? input.isCompleted : current.isCompleted;
+      const nextResolved = typeof input.isResolved === "boolean" ? input.isResolved : current.isResolved;
       const nextTitle = input.title ?? current.title;
       const message = nextArchived !== current.isArchived
         ? (nextArchived ? "Ticket archived" : "Ticket restored")
-        : input.laneId != null && input.laneId !== current.laneId
-          ? "Ticket moved"
-          : typeof input.isCompleted === "boolean" && nextCompleted !== current.isCompleted
-            ? (nextCompleted ? "Ticket marked completed" : "Ticket reopened")
+          : input.laneId != null && input.laneId !== current.laneId
+            ? "Ticket moved"
+            : typeof input.isResolved === "boolean" && nextResolved !== current.isResolved
+              ? (nextResolved ? "Ticket resolved" : "Ticket reopened")
             : nextTitle !== current.title
               ? "Ticket title updated"
               : "Ticket updated";
@@ -657,7 +685,7 @@ export class KanbanDb {
       this.addActivity(ticket.boardId, ticketId, "ticket_deleted", "Ticket deleted", {
         title: ticket.title,
         laneId: ticket.laneId,
-        isCompleted: ticket.isCompleted,
+        isResolved: ticket.isResolved,
         isArchived: ticket.isArchived,
       });
       this.sqlite.prepare("UPDATE tickets SET parent_ticket_id = NULL WHERE parent_ticket_id = ?").run(ticketId);
@@ -775,7 +803,7 @@ export class KanbanDb {
     };
   }
 
-  transitionTicket(ticketId: Id, laneName: string, isCompleted?: boolean): TicketView {
+  transitionTicket(ticketId: Id, laneName: string, isResolved?: boolean): TicketView {
     const current = this.getTicket(ticketId);
     if (!current) {
       throw new Error("Ticket not found");
@@ -788,7 +816,7 @@ export class KanbanDb {
     }
     return this.updateTicket(ticketId, {
       laneId: lane.id,
-      isCompleted,
+      isResolved,
     });
   }
 
@@ -834,7 +862,7 @@ export class KanbanDb {
     return this.listTickets(boardId);
   }
 
-  bulkCompleteTickets(input: BulkCompleteTicketsInput): TicketSummaryView[] {
+  bulkResolveTickets(input: BulkResolveTicketsInput): TicketSummaryView[] {
     const rows = this.getTicketRowsForBoard(input.boardId, input.ticketIds);
     if (rows.length !== input.ticketIds.length) {
       throw new Error("Some tickets do not belong to board");
@@ -843,15 +871,15 @@ export class KanbanDb {
       return [];
     }
     const now = this.now();
-    const stmt = this.sqlite.prepare("UPDATE tickets SET is_completed = ?, updated_at = ? WHERE id = ?");
+    const stmt = this.sqlite.prepare("UPDATE tickets SET is_resolved = ?, updated_at = ? WHERE id = ?");
     const tx = this.sqlite.transaction(() => {
-      rows.forEach((row) => stmt.run(input.isCompleted ? 1 : 0, now, row.id));
+      rows.forEach((row) => stmt.run(input.isResolved ? 1 : 0, now, row.id));
       rows.forEach((row) =>
         this.addActivity(
           input.boardId,
           row.id,
-          input.isCompleted ? "ticket_completed" : "ticket_reopened",
-          input.isCompleted ? "Ticket marked completed" : "Ticket reopened",
+          input.isResolved ? "ticket_resolved" : "ticket_reopened",
+          input.isResolved ? "Ticket resolved" : "Ticket reopened",
         ),
       );
       this.touchBoard(input.boardId);
@@ -880,22 +908,22 @@ export class KanbanDb {
     const movingRows = rows.filter((row) => row.lane_id !== lane.id);
     const nextPosition = this.nextTicketPosition(lane.id);
     const updateStmt = this.sqlite.prepare(
-      "UPDATE tickets SET lane_id = ?, position = ?, is_completed = ?, updated_at = ? WHERE id = ?",
+      "UPDATE tickets SET lane_id = ?, position = ?, is_resolved = ?, updated_at = ? WHERE id = ?",
     );
     const updateSameLaneStmt = this.sqlite.prepare(
-      "UPDATE tickets SET is_completed = ?, updated_at = ? WHERE id = ?",
+      "UPDATE tickets SET is_resolved = ?, updated_at = ? WHERE id = ?",
     );
     const tx = this.sqlite.transaction(() => {
       let targetPosition = nextPosition;
       for (const ticketId of input.ticketIds) {
         const row = rowsById.get(ticketId)!;
-        const nextCompleted = typeof input.isCompleted === "boolean" ? Number(input.isCompleted) : row.is_completed;
+        const nextResolved = typeof input.isResolved === "boolean" ? Number(input.isResolved) : row.is_resolved;
         if (row.lane_id === lane.id) {
-          updateSameLaneStmt.run(nextCompleted, now, row.id);
+          updateSameLaneStmt.run(nextResolved, now, row.id);
           this.addActivity(input.boardId, row.id, "ticket_transitioned", `Moved to ${input.laneName}`);
           continue;
         }
-        updateStmt.run(lane.id, targetPosition, nextCompleted, now, row.id);
+        updateStmt.run(lane.id, targetPosition, nextResolved, now, row.id);
         this.addActivity(input.boardId, row.id, "ticket_transitioned", `Moved to ${input.laneName}`);
         targetPosition += 1;
       }
@@ -955,7 +983,7 @@ export class KanbanDb {
         ref: _ref,
         shortRef: _shortRef,
         ...ticket
-      }) => ticket),
+      }) => ({ ...ticket, isCompleted: ticket.isResolved })),
     };
   }
 
@@ -988,7 +1016,7 @@ export class KanbanDb {
           laneId: laneByName.get(laneName)!,
           title: ticket.title,
           bodyMarkdown: ticket.bodyMarkdown,
-          isCompleted: ticket.isCompleted,
+          isResolved: ticket.isResolved ?? ticket.isCompleted,
           isArchived: ticket.isArchived,
           priority: ticket.priority,
           tagIds: ticket.tags
@@ -1068,9 +1096,9 @@ export class KanbanDb {
       sql += " AND t.lane_id = ?";
       params.push(filters.laneId);
     }
-    if (typeof filters.completed === "boolean") {
-      sql += " AND t.is_completed = ?";
-      params.push(filters.completed ? 1 : 0);
+    if (typeof filters.resolved === "boolean") {
+      sql += " AND t.is_resolved = ?";
+      params.push(filters.resolved ? 1 : 0);
     }
     if (filters.archived === true) {
       sql += " AND t.is_archived = 1";
@@ -1078,8 +1106,17 @@ export class KanbanDb {
       sql += " AND t.is_archived = 0";
     }
     if (filters.q) {
-      sql += " AND (t.title LIKE ? OR t.body_markdown LIKE ?)";
-      params.push(`%${filters.q}%`, `%${filters.q}%`);
+      const q = filters.q.trim();
+      const priorityMatch = /^(?:p|priority):(-?\d+)$/i.exec(q);
+      if (priorityMatch) {
+        sql += " AND t.priority = ?";
+        params.push(Number(priorityMatch[1]));
+      } else {
+        const idQuery = q.startsWith("#") ? q.slice(1) : q;
+        const likeQuery = `%${q}%`;
+        sql += " AND (t.title LIKE ? OR t.body_markdown LIKE ? OR CAST(t.id AS TEXT) LIKE ? OR ('#' || t.id) LIKE ?)";
+        params.push(likeQuery, likeQuery, `%${idQuery}%`, likeQuery);
+      }
     }
     if (filters.tag) {
       sql += `
@@ -1312,7 +1349,7 @@ export class KanbanDb {
     const relationsByTicket = this.getRelationEntriesForTicketIds(
       ticketIds,
       `
-        SELECT child.id AS ticket_id, parent.id, parent.title, parent.lane_id, parent.is_completed, parent.priority, board.name AS board_name
+        SELECT child.id AS ticket_id, parent.id, parent.title, parent.lane_id, parent.is_resolved, parent.priority, board.name AS board_name
         FROM tickets child
         INNER JOIN tickets parent ON parent.id = child.parent_ticket_id
         INNER JOIN boards board ON board.id = parent.board_id
@@ -1332,7 +1369,7 @@ export class KanbanDb {
     return this.getRelationEntriesForTicketIds(
       ticketIds,
       `
-        SELECT parent_ticket_id AS ticket_id, tickets.id, tickets.title, tickets.lane_id, tickets.is_completed, tickets.priority, board.name AS board_name
+        SELECT parent_ticket_id AS ticket_id, tickets.id, tickets.title, tickets.lane_id, tickets.is_resolved, tickets.priority, board.name AS board_name
         FROM tickets
         INNER JOIN boards board ON board.id = tickets.board_id
         WHERE parent_ticket_id IN ({placeholders})
@@ -1345,7 +1382,7 @@ export class KanbanDb {
     return this.getRelationEntriesForTicketIds(
       ticketIds,
       `
-        SELECT tb.ticket_id, t.id, t.title, t.lane_id, t.is_completed, t.priority, board.name AS board_name
+        SELECT tb.ticket_id, t.id, t.title, t.lane_id, t.is_resolved, t.priority, board.name AS board_name
         FROM ticket_blockers tb
         INNER JOIN tickets t ON t.id = tb.blocker_ticket_id
         INNER JOIN boards board ON board.id = t.board_id
@@ -1384,7 +1421,7 @@ export class KanbanDb {
     return this.getRelationEntriesForTicketIds(
       ticketIds,
       `
-        SELECT tb.blocker_ticket_id AS ticket_id, t.id, t.title, t.lane_id, t.is_completed, t.priority, board.name AS board_name
+        SELECT tb.blocker_ticket_id AS ticket_id, t.id, t.title, t.lane_id, t.is_resolved, t.priority, board.name AS board_name
         FROM ticket_blockers tb
         INNER JOIN tickets t ON t.id = tb.ticket_id
         INNER JOIN boards board ON board.id = t.board_id
@@ -1460,7 +1497,7 @@ function mapTicket(
     title: row.title,
     bodyMarkdown: row.body_markdown,
     bodyHtml: renderMarkdown(row.body_markdown),
-    isCompleted: Boolean(row.is_completed),
+    isResolved: Boolean(row.is_resolved),
     isArchived: Boolean(row.is_archived),
     priority: row.priority,
     position: row.position,
@@ -1490,7 +1527,7 @@ function mapTicketSummary(
     laneId: row.lane_id,
     parentTicketId: row.parent_ticket_id,
     title: row.title,
-    isCompleted: Boolean(row.is_completed),
+    isResolved: Boolean(row.is_resolved),
     isArchived: Boolean(row.is_archived),
     priority: row.priority,
     position: row.position,
@@ -1547,7 +1584,7 @@ function mapRelation(
     id: Id;
     title: string;
     lane_id: Id;
-    is_completed: number;
+    is_resolved: number;
     priority: number;
   },
   boardName: string,
@@ -1556,7 +1593,7 @@ function mapRelation(
     id: row.id,
     title: row.title,
     laneId: row.lane_id,
-    isCompleted: Boolean(row.is_completed),
+    isResolved: Boolean(row.is_resolved),
     priority: row.priority,
     ref: formatTicketRef(boardName, row.id),
     shortRef: formatShortRef(row.id),

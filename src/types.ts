@@ -29,7 +29,7 @@ export type TicketRow = {
   parent_ticket_id: Id | null;
   title: string;
   body_markdown: string;
-  is_completed: number;
+  is_resolved: number;
   is_archived: number;
   priority: number;
   position: number;
@@ -76,7 +76,7 @@ export type TicketBlockerView = {
   id: Id;
   title: string;
   laneId: Id;
-  isCompleted: boolean;
+  isResolved: boolean;
   priority: number;
   ref: string;
   shortRef: string;
@@ -86,7 +86,7 @@ export type TicketRelationView = {
   id: Id;
   title: string;
   laneId: Id;
-  isCompleted: boolean;
+  isResolved: boolean;
   priority: number;
   ref: string;
   shortRef: string;
@@ -107,7 +107,7 @@ export type TicketView = {
   title: string;
   bodyMarkdown: string;
   bodyHtml: string;
-  isCompleted: boolean;
+  isResolved: boolean;
   isArchived: boolean;
   priority: number;
   position: number;
@@ -130,7 +130,7 @@ export type TicketSummaryView = {
   laneId: Id;
   parentTicketId: Id | null;
   title: string;
-  isCompleted: boolean;
+  isResolved: boolean;
   isArchived: boolean;
   priority: number;
   position: number;
@@ -193,5 +193,5 @@ export type BoardExport = {
   board: BoardView;
   lanes: LaneView[];
   tags: TagView[];
-  tickets: Array<Omit<TicketView, "bodyHtml" | "blockers" | "blockedBy" | "parent" | "children" | "ref" | "shortRef">>;
+  tickets: Array<Omit<TicketView, "bodyHtml" | "blockers" | "blockedBy" | "parent" | "children" | "ref" | "shortRef"> & { isCompleted?: boolean }>;
 };

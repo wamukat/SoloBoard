@@ -5,7 +5,14 @@ import fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
 
 import { KanbanDb } from "./db.js";
-import { type BoardExport, type Id } from "./types.js";
+import {
+  type BoardDetailView,
+  type BoardExport,
+  type Id,
+  type TicketRelationView,
+  type TicketSummaryView,
+  type TicketView,
+} from "./types.js";
 
 type BuildAppOptions = {
   dbFile: string;
@@ -17,6 +24,7 @@ type TicketMutationBody = {
   parentTicketId?: number | null;
   title?: string;
   bodyMarkdown?: string;
+  isResolved?: boolean;
   isCompleted?: boolean;
   isArchived?: boolean;
   priority?: number;
@@ -26,6 +34,7 @@ type TicketMutationBody = {
 
 type TicketTransitionBody = {
   laneName?: string;
+  isResolved?: boolean;
   isCompleted?: boolean;
 };
 
@@ -200,11 +209,12 @@ const activityLogsResponseSchema = {
 const ticketRelationSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["id", "title", "laneId", "isCompleted", "priority", "ref", "shortRef"],
+  required: ["id", "title", "laneId", "isResolved", "isCompleted", "priority", "ref", "shortRef"],
   properties: {
     id: positiveIntegerSchema,
     title: { type: "string" },
     laneId: positiveIntegerSchema,
+    isResolved: { type: "boolean" },
     isCompleted: { type: "boolean" },
     priority: { type: "number" },
     ref: { type: "string" },
@@ -244,6 +254,7 @@ const ticketSchema = {
     "title",
     "bodyMarkdown",
     "bodyHtml",
+    "isResolved",
     "isCompleted",
     "isArchived",
     "priority",
@@ -268,6 +279,7 @@ const ticketSchema = {
     title: { type: "string" },
     bodyMarkdown: { type: "string" },
     bodyHtml: { type: "string" },
+    isResolved: { type: "boolean" },
     isCompleted: { type: "boolean" },
     isArchived: { type: "boolean" },
     priority: { type: "number" },
@@ -313,6 +325,7 @@ const ticketSummarySchema = {
     "laneId",
     "parentTicketId",
     "title",
+    "isResolved",
     "isCompleted",
     "isArchived",
     "priority",
@@ -330,6 +343,7 @@ const ticketSummarySchema = {
     laneId: positiveIntegerSchema,
     parentTicketId: { anyOf: [positiveIntegerSchema, { type: "null" }] },
     title: { type: "string" },
+    isResolved: { type: "boolean" },
     isCompleted: { type: "boolean" },
     isArchived: { type: "boolean" },
     priority: { type: "number" },
@@ -451,6 +465,7 @@ const ticketMutationBodySchema = {
     },
     title: { type: "string", minLength: 1 },
     bodyMarkdown: { type: "string" },
+    isResolved: { type: "boolean" },
     isCompleted: { type: "boolean" },
     isArchived: { type: "boolean" },
     priority: { type: "number" },
@@ -477,6 +492,7 @@ const ticketTransitionBodySchema = {
   additionalProperties: false,
   properties: {
     laneName: { type: "string", minLength: 1 },
+    isResolved: { type: "boolean" },
     isCompleted: { type: "boolean" },
   },
 } as const;
@@ -505,6 +521,7 @@ const ticketListQuerySchema = {
   properties: {
     lane_id: positiveIntegerSchema,
     tag: { type: "string" },
+    resolved: { type: "string", enum: ["true", "false"] },
     completed: { type: "string", enum: ["true", "false"] },
     archived: { type: "string", enum: ["true", "false", "all"] },
     q: { type: "string" },
@@ -532,12 +549,13 @@ const reorderTicketsBodySchema = {
   },
 } as const;
 
-const bulkCompleteTicketsBodySchema = {
+const bulkResolveTicketsBodySchema = {
   type: "object",
-  required: ["ticketIds", "isCompleted"],
+  required: ["ticketIds"],
   additionalProperties: false,
   properties: {
     ticketIds: optionalPositiveIntegerArraySchema,
+    isResolved: { type: "boolean" },
     isCompleted: { type: "boolean" },
   },
 } as const;
@@ -549,6 +567,7 @@ const bulkTransitionTicketsBodySchema = {
   properties: {
     ticketIds: optionalPositiveIntegerArraySchema,
     laneName: { type: "string", minLength: 1 },
+    isResolved: { type: "boolean" },
     isCompleted: { type: "boolean" },
   },
 } as const;
@@ -562,6 +581,43 @@ const bulkArchiveTicketsBodySchema = {
     isArchived: { type: "boolean" },
   },
 } as const;
+
+type ApiTicketRelationView = TicketRelationView & { isCompleted: boolean };
+type ApiTicketSummaryView = TicketSummaryView & { isCompleted: boolean };
+type ApiTicketView = Omit<TicketView, "parent" | "children" | "blockers" | "blockedBy"> & {
+  isCompleted: boolean;
+  parent: ApiTicketRelationView | null;
+  children: ApiTicketRelationView[];
+  blockers: ApiTicketRelationView[];
+  blockedBy: ApiTicketRelationView[];
+};
+
+function serializeTicketRelation(relation: TicketRelationView): ApiTicketRelationView {
+  return { ...relation, isCompleted: relation.isResolved };
+}
+
+function serializeTicketSummary(ticket: TicketSummaryView): ApiTicketSummaryView {
+  return { ...ticket, isCompleted: ticket.isResolved };
+}
+
+function serializeTicket(ticket: TicketView): ApiTicketView {
+  return {
+    ...ticket,
+    isCompleted: ticket.isResolved,
+    parent: ticket.parent ? serializeTicketRelation(ticket.parent) : null,
+    children: ticket.children.map(serializeTicketRelation),
+    blockers: ticket.blockers.map(serializeTicketRelation),
+    blockedBy: ticket.blockedBy.map(serializeTicketRelation),
+  };
+}
+
+function serializeTicketSummaries(tickets: TicketSummaryView[]): ApiTicketSummaryView[] {
+  return tickets.map(serializeTicketSummary);
+}
+
+function serializeBoardDetail(detail: BoardDetailView): Omit<BoardDetailView, "tickets"> & { tickets: ApiTicketView[] } {
+  return { ...detail, tickets: detail.tickets.map(serializeTicket) };
+}
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = fastify({ logger: false, bodyLimit: 64 * 1024 * 1024 });
@@ -690,7 +746,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
     const board = db.createBoard({ name, laneNames: sanitizeStringArray(body.laneNames) });
     publishBoardEvent(board.board.id, "board_created");
-    return reply.code(201).send(board);
+    return reply.code(201).send(serializeBoardDetail(board));
   });
 
   app.get("/api/boards/:boardId", {
@@ -1002,21 +1058,22 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     const query = request.query as {
       lane_id?: string;
       tag?: string;
+      resolved?: string;
       completed?: string;
       archived?: string;
       q?: string;
     };
+    const resolvedFilter = parseBooleanQuery(query.resolved ?? query.completed);
     return {
-      tickets: db.listTicketSummaries(boardId, {
+      tickets: serializeTicketSummaries(db.listTicketSummaries(boardId, {
         laneId: query.lane_id ? Number(query.lane_id) : undefined,
         tag: query.tag?.trim() || undefined,
-        completed:
-          query.completed === "true" ? true : query.completed === "false" ? false : undefined,
+        resolved: resolvedFilter,
         archived:
           query.archived === "true" ? true : query.archived === "false" ? false : undefined,
         includeArchived: query.archived === "all",
         q: query.q?.trim() || undefined,
-      }),
+      })),
     };
   });
 
@@ -1049,14 +1106,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           parentTicketId: body.parentTicketId ?? null,
           title: body.title.trim(),
           bodyMarkdown: body.bodyMarkdown ?? "",
-          isCompleted: Boolean(body.isCompleted),
+          isResolved: Boolean(resolveResolvedFlag(body)),
           isArchived: Boolean(body.isArchived),
           priority: typeof body.priority === "number" ? body.priority : 0,
           tagIds: Array.isArray(body.tagIds) ? body.tagIds : [],
           blockerIds: Array.isArray(body.blockerIds) ? body.blockerIds : [],
         });
       publishBoardEvent(boardId);
-      return reply.code(201).send(ticket);
+      return reply.code(201).send(serializeTicket(ticket));
     } catch (error) {
       const message = error instanceof Error ? error.message : "ticket create failed";
       return reply.code(400).send({ error: message });
@@ -1066,7 +1123,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.post("/api/boards/:boardId/tickets/bulk-complete", {
     schema: {
       params: idParamsSchema("boardId"),
-      body: bulkCompleteTicketsBodySchema,
+      body: bulkResolveTicketsBodySchema,
       response: {
         200: ticketsResponseSchema,
         400: errorSchema,
@@ -1075,7 +1132,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     },
   }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
-    const body = request.body as { ticketIds?: number[]; isCompleted?: boolean };
+    const body = request.body as { ticketIds?: number[]; isResolved?: boolean; isCompleted?: boolean };
     if (!db.getBoard(boardId)) {
       return reply.code(404).send({ error: "board not found" });
     }
@@ -1083,13 +1140,17 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return reply.code(400).send({ error: "ticketids is required" });
     }
     try {
-      const tickets = db.bulkCompleteTickets({
+      const isResolved = resolveResolvedFlag(body);
+      if (typeof isResolved !== "boolean") {
+        return reply.code(400).send({ error: "isresolved is required" });
+      }
+      const tickets = db.bulkResolveTickets({
         boardId,
         ticketIds: body.ticketIds,
-        isCompleted: Boolean(body.isCompleted),
+        isResolved,
       });
       publishBoardEvent(boardId);
-      return { tickets };
+      return { tickets: serializeTicketSummaries(tickets) };
     } catch (error) {
       const message = error instanceof Error ? error.message : "bulk complete failed";
       return reply.code(400).send({ error: message.toLowerCase() });
@@ -1108,7 +1169,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     },
   }, async (request, reply) => {
     const boardId = getIdParam(request.params, "boardId");
-    const body = request.body as { ticketIds?: number[]; laneName?: string; isCompleted?: boolean };
+    const body = request.body as { ticketIds?: number[]; laneName?: string; isResolved?: boolean; isCompleted?: boolean };
     if (!db.getBoard(boardId)) {
       return reply.code(404).send({ error: "board not found" });
     }
@@ -1124,10 +1185,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         boardId,
         ticketIds: body.ticketIds,
         laneName,
-        isCompleted: body.isCompleted,
+        isResolved: resolveResolvedFlag(body),
       });
       publishBoardEvent(boardId);
-      return { tickets };
+      return { tickets: serializeTicketSummaries(tickets) };
     } catch (error) {
       const message = error instanceof Error ? error.message : "bulk transition failed";
       return reply.code(400).send({ error: message.toLowerCase() });
@@ -1160,7 +1221,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         isArchived: Boolean(body.isArchived),
       });
       publishBoardEvent(boardId);
-      return { tickets };
+      return { tickets: serializeTicketSummaries(tickets) };
     } catch (error) {
       const message = error instanceof Error ? error.message : "bulk archive failed";
       return reply.code(400).send({ error: message.toLowerCase() });
@@ -1180,7 +1241,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     if (!ticket) {
       return reply.code(404).send({ error: "ticket not found" });
     }
-    return ticket;
+    return serializeTicket(ticket);
   });
 
   app.get("/api/tickets/:ticketId/comments", {
@@ -1225,7 +1286,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     },
   }, async (request, reply) => {
     try {
-      return db.getTicketRelations(getIdParam(request.params, "ticketId"));
+      const relations = db.getTicketRelations(getIdParam(request.params, "ticketId"));
+      return {
+        parent: relations.parent ? serializeTicketRelation(relations.parent) : null,
+        children: relations.children.map(serializeTicketRelation),
+        blockers: relations.blockers.map(serializeTicketRelation),
+        blockedBy: relations.blockedBy.map(serializeTicketRelation),
+      };
     } catch {
       return reply.code(404).send({ error: "ticket not found" });
     }
@@ -1334,14 +1401,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         parentTicketId: body.parentTicketId,
         title: body.title?.trim(),
         bodyMarkdown: body.bodyMarkdown,
-        isCompleted: body.isCompleted,
+        isResolved: resolveResolvedFlag(body),
         isArchived: body.isArchived,
         priority: typeof body.priority === "number" ? body.priority : undefined,
         tagIds: Array.isArray(body.tagIds) ? body.tagIds : undefined,
         blockerIds: Array.isArray(body.blockerIds) ? body.blockerIds : undefined,
       });
       publishBoardEvent(ticket.boardId);
-      return ticket;
+      return serializeTicket(ticket);
     } catch (error) {
       const message = error instanceof Error ? error.message : "ticket update failed";
       const code = message === "Ticket not found" ? 404 : 400;
@@ -1372,10 +1439,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       const ticket = db.transitionTicket(
         getIdParam(request.params, "ticketId"),
         laneName,
-        body.isCompleted,
+        resolveResolvedFlag(body),
       );
       publishBoardEvent(ticket.boardId);
-      return ticket;
+      return serializeTicket(ticket);
     } catch (error) {
       const message = error instanceof Error ? error.message : "ticket transition failed";
       const code = message === "Ticket not found" ? 404 : 400;
@@ -1426,7 +1493,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     try {
       const tickets = db.reorderTickets(boardId, body.items);
       publishBoardEvent(boardId);
-      return { tickets };
+      return { tickets: serializeTicketSummaries(tickets) };
     } catch (error) {
       const message = error instanceof Error ? error.message : "ticket reorder failed";
       return reply.code(400).send({ error: message });
@@ -1460,7 +1527,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     try {
       const board = db.importBoard(body);
       publishBoardEvent(board.board.id, "board_imported");
-      return reply.code(201).send(board);
+      return reply.code(201).send(serializeBoardDetail(board));
     } catch (error) {
       const message = error instanceof Error ? error.message : "import failed";
       return reply.code(400).send({ error: message });
@@ -1520,6 +1587,23 @@ function sanitizeStringArray(values: unknown): string[] | undefined {
   return result.length > 0 ? result : undefined;
 }
 
+function parseBooleanQuery(value: string | undefined): boolean | undefined {
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  return undefined;
+}
+
+function resolveResolvedFlag(body: { isResolved?: boolean; isCompleted?: boolean } | undefined): boolean | undefined {
+  if (typeof body?.isResolved === "boolean") {
+    return body.isResolved;
+  }
+  return body?.isCompleted;
+}
+
 function parseTicketMutationBody(body: TicketMutationBody): TicketMutationBody {
   const hasParentTicketId = Object.prototype.hasOwnProperty.call(body ?? {}, "parentTicketId");
   const hasBlockerIds = Object.prototype.hasOwnProperty.call(body ?? {}, "blockerIds");
@@ -1528,6 +1612,7 @@ function parseTicketMutationBody(body: TicketMutationBody): TicketMutationBody {
     parentTicketId: hasParentTicketId ? body?.parentTicketId ?? null : undefined,
     title: typeof body?.title === "string" ? body.title.trim() : undefined,
     bodyMarkdown: body?.bodyMarkdown,
+    isResolved: resolveResolvedFlag(body),
     isCompleted: body?.isCompleted,
     isArchived: body?.isArchived,
     priority: typeof body?.priority === "number" ? body.priority : undefined,

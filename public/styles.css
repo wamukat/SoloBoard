@@ -187,11 +187,69 @@ button:hover,
 }
 
 .board-add-button {
+  position: relative;
   margin-top: 0.6rem;
   width: 100%;
   min-width: 0;
   height: auto;
   justify-content: center;
+}
+
+.board-add-button.is-empty-target {
+  border-color: rgba(31, 111, 95, 0.55);
+  background: rgba(31, 111, 95, 0.08);
+  color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(31, 111, 95, 0.1);
+  animation: board-create-nudge 1.8s ease-in-out infinite;
+  margin-bottom: 5.4rem;
+}
+
+.board-add-button.is-empty-target::before {
+  content: "";
+  position: absolute;
+  top: calc(100% + 0.18rem);
+  left: 0.62rem;
+  z-index: 2;
+  width: 0.75rem;
+  height: 1.05rem;
+  background: rgba(31, 111, 95, 0.72);
+  clip-path: polygon(50% 0, 100% 38%, 65% 38%, 65% 100%, 35% 100%, 35% 38%, 0 38%);
+}
+
+.board-add-button.is-empty-target::after {
+  content: "Create board here";
+  position: absolute;
+  top: calc(100% + 1.2rem);
+  left: 0;
+  z-index: 1;
+  width: 13.75rem;
+  padding: 0.8rem 0.85rem;
+  border: 1px solid rgba(31, 111, 95, 0.28);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 8px 18px rgba(38, 35, 28, 0.1);
+}
+
+@keyframes board-create-nudge {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(31, 111, 95, 0.1);
+  }
+
+  50% {
+    box-shadow: 0 0 0 5px rgba(31, 111, 95, 0.16);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-add-button.is-empty-target {
+    animation: none;
+  }
 }
 
 .sidebar-edge-toggle {
@@ -219,6 +277,12 @@ button:hover,
 }
 
 .shell.sidebar-collapsed .sidebar-edge-toggle {
+  display: none;
+}
+
+.shell.no-boards .toolbar,
+.shell.no-boards #sidebar-view-section,
+.shell.no-boards .sidebar-edge-toggle {
   display: none;
 }
 
@@ -422,7 +486,7 @@ button:hover,
 
 .toolbar-actions {
   display: grid;
-  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(300px, 460px) minmax(0, 1fr);
   align-items: center;
   justify-content: stretch;
   gap: 0.65rem;
@@ -1015,7 +1079,7 @@ button:hover,
   overflow: hidden;
 }
 
-.list-row.completed {
+.list-row.resolved {
   background: rgba(104, 99, 85, 0.04);
 }
 
@@ -1097,13 +1161,52 @@ button:hover,
   margin-right: 0.1rem;
 }
 
-.empty-state,
 .lane,
 .editor-form {
   background: var(--panel);
   border: 1px solid rgba(104, 99, 85, 0.16);
   border-radius: 10px;
   box-shadow: var(--shadow);
+}
+
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  max-width: 28rem;
+  padding: 2rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-state-icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid rgba(31, 111, 95, 0.18);
+  border-radius: 8px;
+  background: rgba(31, 111, 95, 0.07);
+  color: var(--accent);
+}
+
+.empty-state-icon .icon {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.empty-state strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.empty-state p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.empty-state-action {
+  margin-top: 0.2rem;
 }
 
 .lane {
@@ -1208,6 +1311,36 @@ button:hover,
   min-height: 2rem;
 }
 
+.lane-empty-note {
+  display: grid;
+  justify-items: center;
+  gap: 0.4rem;
+  min-height: 5.5rem;
+  padding: 1.2rem 0.75rem;
+  border: 1px dashed rgba(104, 99, 85, 0.18);
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.lane-empty-note span {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  background: rgba(104, 99, 85, 0.07);
+}
+
+.lane-empty-note .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.lane-empty-note p {
+  margin: 0;
+  font-size: 0.84rem;
+}
+
 .ticket-card {
   min-width: 0;
   border: 1px solid var(--line);
@@ -1220,11 +1353,11 @@ button:hover,
   opacity: 0.45;
 }
 
-.ticket-card.completed {
+.ticket-card.resolved {
   border-style: dashed;
 }
 
-.ticket-card.completed .ticket-link {
+.ticket-card.resolved .ticket-link {
   color: rgba(28, 28, 23, 0.58);
 }
 
@@ -1304,7 +1437,7 @@ button:hover,
   stroke-width: 2.4;
 }
 
-.ticket-status-icon-done {
+.ticket-status-icon-resolved {
   border-color: rgba(31, 111, 95, 0.22);
   color: var(--accent);
   background: rgba(31, 111, 95, 0.08);
@@ -1775,7 +1908,7 @@ button:hover,
   border-color: rgba(31, 111, 95, 0.18);
 }
 
-.ticket-state-pill-completed {
+.ticket-state-pill-resolved {
   background: #efece4;
   color: #5d5849;
   border-color: rgba(104, 99, 85, 0.18);
@@ -2012,7 +2145,7 @@ button:hover,
   background: rgba(143, 42, 28, 0.96);
 }
 
-.ticket-ref-completed {
+.ticket-ref-resolved {
   text-decoration: line-through;
 }
 

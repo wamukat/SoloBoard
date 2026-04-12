@@ -92,16 +92,16 @@
           <div class="toolbar-actions">
             <label class="toolbar-search" for="search-input">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#search"></use></svg>
-              <input id="search-input" type="search" placeholder="Search tickets" />
+              <input id="search-input" type="search" placeholder="Search keywords, #123, priority:3" />
             </label>
             <div class="toolbar-filters">
               <select id="lane-filter" hidden>
                 <option value="">All lanes</option>
               </select>
-              <div id="completed-filter" class="filter-toggle" role="group" aria-label="Completion filter">
+              <div id="resolved-filter" class="filter-toggle" role="group" aria-label="Resolved filter">
                 <button type="button" data-value="">All</button>
-                <button type="button" data-value="false" class="active">Open</button>
-                <button type="button" data-value="true">Done</button>
+                <button type="button" data-value="false" class="active">Unresolved</button>
+                <button type="button" data-value="true">Resolved</button>
               </div>
               <select id="tag-filter">
                 <option value="">All tags</option>
@@ -131,7 +131,7 @@
         <div class="editor-header">
           <div class="editor-dialog-heading">
             <div class="editor-dialog-heading-top">
-              <span id="editor-header-state" class="ticket-state-pill ticket-state-pill-open" hidden>Open</span>
+              <span id="editor-header-state" class="ticket-state-pill ticket-state-pill-open" hidden>Unresolved</span>
               <span id="editor-header-id" class="muted"></span>
             </div>
             <h2 id="editor-header-title" class="editor-header-title" hidden></h2>
@@ -192,9 +192,9 @@
               <input id="ticket-priority" name="priority" type="number" step="1" value="0" />
             </label>
 
-             <label id="ticket-completed-row" class="editor-compact-label completion-toggle">
-              <span class="completion-toggle-label">Done</span>
-              <input id="ticket-completed" class="toggle-switch-input" name="isCompleted" type="checkbox" />
+             <label id="ticket-resolved-row" class="editor-compact-label completion-toggle">
+              <span class="completion-toggle-label">Resolved</span>
+              <input id="ticket-resolved" class="toggle-switch-input" name="isResolved" type="checkbox" />
               <span class="completion-toggle-control toggle-switch-control">
                 <span class="completion-switch toggle-switch-knob" aria-hidden="true"></span>
               </span>

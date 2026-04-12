@@ -33,8 +33,8 @@ export function createTicketDetailModule(ctx) {
       return;
     }
     elements.editorHeaderState.hidden = false;
-    elements.editorHeaderState.textContent = ticket.isCompleted ? "Completed" : "Open";
-    elements.editorHeaderState.className = `ticket-state-pill ${ticket.isCompleted ? "ticket-state-pill-completed" : "ticket-state-pill-open"}`;
+    elements.editorHeaderState.textContent = ticket.isResolved ? "Resolved" : "Unresolved";
+    elements.editorHeaderState.className = `ticket-state-pill ${ticket.isResolved ? "ticket-state-pill-resolved" : "ticket-state-pill-open"}`;
     elements.editorHeaderId.textContent = `#${ticket.id}`;
     elements.editorHeaderTitle.textContent = ticket.title;
     elements.editorHeaderTitle.hidden = state.dialogMode !== "view";
@@ -87,7 +87,7 @@ export function createTicketDetailModule(ctx) {
   }
 
   function renderRelationChip(ticket, kind) {
-    return `<a class="ticket-tag-chip ticket-ref-chip ticket-relation-chip ticket-relation-chip-${kind}" href="/tickets/${ticket.id}"><span class="ticket-ref-chip-id${ticket.isCompleted ? " ticket-ref-completed" : ""}">#${ticket.id}</span><span class="ticket-ref-chip-text">${ctx.escapeHtml(ticket.title)}</span></a>`;
+    return `<a class="ticket-tag-chip ticket-ref-chip ticket-relation-chip ticket-relation-chip-${kind}" href="/tickets/${ticket.id}"><span class="ticket-ref-chip-id${ticket.isResolved ? " ticket-ref-resolved" : ""}">#${ticket.id}</span><span class="ticket-ref-chip-text">${ctx.escapeHtml(ticket.title)}</span></a>`;
   }
 
   function renderActivity(activity) {
