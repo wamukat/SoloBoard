@@ -1,6 +1,6 @@
 import { calculateVisibleWindow, takeRoundRobinBatch } from "./app-board-utils.js";
 import { icon } from "./icons.js";
-import { tagBackgroundStyle, tagToneClass } from "./app-tags.js";
+import { renderTag, tagBackgroundStyle, tagToneClass } from "./app-tags.js";
 
 export function createBoardModule(ctx) {
   const { state, elements } = ctx;
@@ -416,7 +416,7 @@ export function createBoardModule(ctx) {
   function renderListRow(entry) {
     const { ticket, indent } = entry;
     const tags = ticket.tags
-      .map((tag) => `<span class="tag${tagToneClass(tag)}"${tagBackgroundStyle(tag, ctx.escapeHtml)}>${ctx.escapeHtml(tag.name)}</span>`)
+      .map((tag) => renderTag(tag, ctx.escapeHtml))
       .join("");
     const blockedByTickets = state.boardTickets.filter((candidate) => ticket.blockerIds.includes(candidate.id));
     const blockedBy = blockedByTickets.length
@@ -591,7 +591,7 @@ export function createBoardModule(ctx) {
         <span class="ticket-status-icons">${statusIcons}</span>
       </div>
       <div class="tag-list">
-        ${ticket.tags.map((tag) => `<span class="tag${tagToneClass(tag)}"${tagBackgroundStyle(tag, ctx.escapeHtml)}>${ctx.escapeHtml(tag.name)}</span>`).join("")}
+        ${ticket.tags.map((tag) => renderTag(tag, ctx.escapeHtml)).join("")}
       </div>
     `;
 

@@ -26,6 +26,18 @@ body {
   color: var(--text);
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 html.dialog-scroll-locked,
 body.dialog-scroll-locked {
   overflow: hidden;
@@ -709,18 +721,28 @@ button:hover,
   flex-wrap: wrap;
   gap: 0.35rem;
   align-items: center;
+  min-width: 0;
 }
 
 .ticket-tag-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.28rem;
+  max-width: 100%;
+  min-width: 0;
   min-height: 1.6rem;
   padding: 0.1rem 0.5rem;
   border: 1px solid transparent;
   border-radius: 999px;
   color: #fff;
   font-size: 0.8rem;
+}
+
+.ticket-tag-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ticket-ref-chip {
@@ -836,6 +858,9 @@ button:hover,
   display: inline-flex;
   align-items: center;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tag-picker-check {
@@ -1377,6 +1402,8 @@ button:hover,
   gap: 0.5rem;
   flex-wrap: wrap;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ticket-head {
@@ -1466,11 +1493,16 @@ button:hover,
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
   border-radius: 999px;
   border: 1px solid transparent;
   padding: 0.15rem 0.55rem;
   color: #fff;
   font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tag-no-color {

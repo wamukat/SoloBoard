@@ -9,6 +9,20 @@ export function tagBackgroundStyle(tag, escapeHtml) {
   return ` style="background:${escapeHtml(tag.color)};color:${tagTextColor(tag.color)}"`;
 }
 
+export function formatTagLabel(tag, options = {}) {
+  const maxLength = options.maxLength ?? 28;
+  const name = tag.name ?? "";
+  return {
+    name,
+    label: truncateTagName(name, maxLength),
+  };
+}
+
+export function renderTag(tag, escapeHtml, options = {}) {
+  const { name, label } = formatTagLabel(tag, options);
+  return `<span class="tag${tagToneClass(tag)}" title="${escapeHtml(name)}"${tagBackgroundStyle(tag, escapeHtml)}><span class="visually-hidden">${escapeHtml(name)}</span><span aria-hidden="true">${escapeHtml(label)}</span></span>`;
+}
+
 export function tagTextColor(hexColor) {
   const rgb = parseHexColor(hexColor);
   if (!rgb) {
@@ -37,4 +51,61 @@ function relativeLuminance({ r, g, b }) {
     return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   });
   return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function truncateTagName(name, maxLength) {
+  const characters = splitGraphemes(name);
+  if (characters.length <= maxLength) {
+    return name;
+  }
+  return `${characters.slice(0, Math.max(0, maxLength - 3)).join("")}...`;
+}
+
+function splitGraphemes(value) {
+  if (typeof globalThis.Intl?.Segmenter === "function") {
+    return [...new globalThis.Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)].map((segment) => segment.segment);
+  }
+  return splitGraphemesFallback(value);
+}
+
+function splitGraphemesFallback(value) {
+  const clusters = [];
+  let joinNext = false;
+  let regionalIndicatorCount = 0;
+  for (const character of Array.from(value)) {
+    if (isRegionalIndicator(character)) {
+      if (regionalIndicatorCount % 2 === 1 && clusters.length > 0) {
+        clusters[clusters.length - 1] += character;
+      } else {
+        clusters.push(character);
+      }
+      regionalIndicatorCount += 1;
+      joinNext = false;
+      continue;
+    }
+    if (clusters.length === 0) {
+      clusters.push(character);
+    } else if (joinNext || isGraphemeExtender(character)) {
+      clusters[clusters.length - 1] += character;
+    } else {
+      clusters.push(character);
+    }
+    joinNext = character === "\u200d";
+    if (!isGraphemeExtender(character)) {
+      regionalIndicatorCount = 0;
+    }
+  }
+  return clusters;
+}
+
+function isRegionalIndicator(character) {
+  return /^[\u{1f1e6}-\u{1f1ff}]$/u.test(character);
+}
+
+function isGraphemeExtender(character) {
+  return /\p{Mark}/u.test(character)
+    || character === "\u200d"
+    || /^[\ufe00-\ufe0f]$/u.test(character)
+    || /^[\u{e0100}-\u{e01ef}]$/u.test(character)
+    || /^[\u{1f3fb}-\u{1f3ff}]$/u.test(character);
 }

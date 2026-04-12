@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { calculateVisibleWindow, takeRoundRobinBatch } from "../public/app-board-utils.js";
-import { tagTextColor } from "../public/app-tags.js";
+import { formatTagLabel, renderTag, tagTextColor } from "../public/app-tags.js";
+import { renderTicketTagChip } from "../public/app-ticket-tag-picker.js";
 
 test("calculateVisibleWindow returns a bounded overscanned range", () => {
   const window = calculateVisibleWindow(5000, 44, 12, 4400, 600);
@@ -34,10 +35,86 @@ test("tagTextColor selects readable foreground colors", () => {
   assert.equal(tagTextColor("#1f6f5f"), "#fffdf7");
 });
 
+test("renderTag truncates long labels and preserves the full name as title", () => {
+  const html = renderTag(
+    { name: "very-long-tag-name-without-natural-breaks", color: "#eeeeee" },
+    escapeHtml,
+    { maxLength: 16 },
+  );
+
+  assert.match(html, /title="very-long-tag-name-without-natural-breaks"/);
+  assert.ok(html.includes('<span class="visually-hidden">very-long-tag-name-without-natural-breaks</span>'));
+  assert.ok(html.includes('<span aria-hidden="true">very-long-tag...</span>'));
+  assert.match(html, /style="background:#eeeeee;color:#1c1c17"/);
+});
+
+test("renderTag keeps a title when the label fits", () => {
+  const html = renderTag({ name: "short", color: null }, escapeHtml);
+
+  assert.equal(html, '<span class="tag tag-no-color" title="short"><span class="visually-hidden">short</span><span aria-hidden="true">short</span></span>');
+});
+
+test("renderTag truncates by grapheme cluster", () => {
+  const html = renderTag({ name: "🏷️🏷️🏷️🏷️🏷️", color: null }, escapeHtml, { maxLength: 4 });
+
+  assert.equal(html, '<span class="tag tag-no-color" title="🏷️🏷️🏷️🏷️🏷️"><span class="visually-hidden">🏷️🏷️🏷️🏷️🏷️</span><span aria-hidden="true">🏷️...</span></span>');
+});
+
+test("formatTagLabel truncates labels without Intl.Segmenter", () => {
+  const intlWithSegmenter = globalThis.Intl as typeof Intl & { Segmenter?: unknown };
+  const originalSegmenter = intlWithSegmenter.Segmenter;
+  try {
+    Object.defineProperty(globalThis.Intl, "Segmenter", {
+      configurable: true,
+      value: undefined,
+    });
+
+    assert.deepEqual(formatTagLabel({ name: "👨‍👩‍👧‍👦family" }, { maxLength: 4 }), {
+      name: "👨‍👩‍👧‍👦family",
+      label: "👨‍👩‍👧‍👦...",
+    });
+    assert.deepEqual(formatTagLabel({ name: "🇯🇵🇺🇸flag" }, { maxLength: 4 }), {
+      name: "🇯🇵🇺🇸flag",
+      label: "🇯🇵...",
+    });
+  } finally {
+    Object.defineProperty(globalThis.Intl, "Segmenter", {
+      configurable: true,
+      value: originalSegmenter,
+    });
+  }
+});
+
+test("formatTagLabel shares the truncation policy for custom tag controls", () => {
+  assert.deepEqual(formatTagLabel({ name: "abcdefghijklmnopqrstuvwxyz" }, { maxLength: 10 }), {
+    name: "abcdefghijklmnopqrstuvwxyz",
+    label: "abcdefg...",
+  });
+});
+
+test("renderTicketTagChip keeps the remove cue and full tag name", () => {
+  const html = renderTicketTagChip(
+    { id: 12, name: "very-long-tag-name-without-natural-breaks", color: null },
+    escapeHtml,
+  );
+
+  assert.match(html, /title="Remove tag: very-long-tag-name-without-natural-breaks"/);
+  assert.match(html, /aria-label="Remove tag: very-long-tag-name-without-natural-breaks"/);
+  assert.ok(html.includes('<span class="ticket-tag-chip-text" aria-hidden="true">very-long-tag-name-withou...</span>'));
+});
+
 test("perf seed requires overwrite flag when board already exists", async () => {
   const source = await import("node:fs/promises").then((fs) => fs.readFile("scripts/perf-seed.mjs", "utf8"));
   assert.match(source, /SOLOBOARD_PERF_OVERWRITE=true/);
 });
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
 
 test("perf benchmark defaults to PATH agent-browser lookup", async () => {
   const source = await import("node:fs/promises").then((fs) => fs.readFile("scripts/perf-benchmark.mjs", "utf8"));

@@ -1,12 +1,14 @@
 import { icon } from "./icons.js";
-import { tagBackgroundStyle, tagToneClass } from "./app-tags.js";
+import { formatTagLabel, tagBackgroundStyle, tagToneClass } from "./app-tags.js";
+
+export function renderTicketTagChip(tag, escapeHtml) {
+  const { name, label } = formatTagLabel(tag);
+  const fullName = escapeHtml(name);
+  return `<button type="button" class="ticket-tag-chip${tagToneClass(tag)}" data-remove-tag-id="${tag.id}"${tagBackgroundStyle(tag, escapeHtml)} title="Remove tag: ${fullName}" aria-label="Remove tag: ${fullName}"><span class="ticket-tag-chip-text" aria-hidden="true">${escapeHtml(label)}</span>${icon("x")}</button>`;
+}
 
 export function createTicketTagPicker(ctx) {
   const { state, elements } = ctx;
-
-  function renderTagSummaryChip(tag) {
-    return `<button type="button" class="ticket-tag-chip${tagToneClass(tag)}" data-remove-tag-id="${tag.id}"${tagBackgroundStyle(tag, ctx.escapeHtml)} title="Remove ${ctx.escapeHtml(tag.name)}">${ctx.escapeHtml(tag.name)} ${icon("x")}</button>`;
-  }
 
   function syncOptions() {
     if (!state.boardDetail) {
@@ -16,7 +18,7 @@ export function createTicketTagPicker(ctx) {
     state.editorTagIds = state.editorTagIds.filter((id) => availableTagIds.has(id));
     const selectedTags = state.boardDetail.tags.filter((tag) => state.editorTagIds.includes(tag.id));
     elements.ticketTagSummary.innerHTML = selectedTags.length
-      ? selectedTags.map(renderTagSummaryChip).join("")
+      ? selectedTags.map((tag) => renderTicketTagChip(tag, ctx.escapeHtml)).join("")
       : '<span class="ticket-tag-placeholder">Add tags</span>';
 
     if (state.boardDetail.tags.length === 0) {
@@ -39,10 +41,11 @@ export function createTicketTagPicker(ctx) {
       ? visibleTags
           .map((tag) => {
             const isSelected = state.editorTagIds.includes(tag.id);
+            const { name, label } = formatTagLabel(tag);
             return `
-              <button type="button" class="tag-picker-item ${isSelected ? "selected" : ""}" data-tag-id="${tag.id}" role="option" aria-selected="${isSelected}">
+              <button type="button" class="tag-picker-item ${isSelected ? "selected" : ""}" data-tag-id="${tag.id}" role="option" aria-selected="${isSelected}" title="${ctx.escapeHtml(name)}" aria-label="${ctx.escapeHtml(name)}">
                 <span class="tag-picker-swatch${tagToneClass(tag)}"${tagBackgroundStyle(tag, ctx.escapeHtml)}></span>
-                <span class="tag-picker-text">${ctx.escapeHtml(tag.name)}</span>
+                <span class="tag-picker-text" aria-hidden="true">${ctx.escapeHtml(label)}</span>
                 <span class="tag-picker-check" aria-hidden="true">${isSelected ? icon("check") : ""}</span>
               </button>
             `;
