@@ -1,6 +1,8 @@
 import { calculateVisibleWindow } from "./app-board-utils.js";
-import { renderTag } from "./app-tags.js";
-import { icon } from "./icons.js";
+import { renderListActions } from "./app-board-list-actions.js";
+import { renderListRow } from "./app-board-list-row.js";
+
+export { renderListActions } from "./app-board-list-actions.js";
 
 export const LIST_ROW_HEIGHT = 44;
 export const LIST_OVERSCAN = 12;
@@ -29,33 +31,6 @@ export function getListTickets(tickets) {
     }
   }
   return ordered;
-}
-
-export function renderListActions(tickets, selectedTicketIds) {
-  const selectedTickets = tickets.filter((ticket) => selectedTicketIds.includes(ticket.id));
-  if (selectedTickets.length === 0) {
-    return '<div class="list-actions list-actions-empty"><span>Select tickets to edit in bulk</span></div>';
-  }
-  const buttons = [];
-  if (selectedTickets.some((ticket) => !ticket.isResolved)) {
-    buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-resolve="true">${icon("check")}<span>Mark Resolved</span></button>`);
-  }
-  if (selectedTickets.some((ticket) => ticket.isResolved)) {
-    buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-resolve="false">${icon("circle")}<span>Reopen</span></button>`);
-  }
-  if (selectedTickets.some((ticket) => !ticket.isArchived)) {
-    buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-archive="true">${icon("archive")}<span>Archive</span></button>`);
-  }
-  if (selectedTickets.some((ticket) => ticket.isArchived)) {
-    buttons.push(`<button type="button" class="list-action-button action-with-icon" data-bulk-archive="false">${icon("rotate-ccw")}<span>Restore</span></button>`);
-  }
-  buttons.push(`<button type="button" class="list-action-button action-with-icon danger" data-bulk-delete="true">${icon("trash-2")}<span>Delete</span></button>`);
-  return `
-      <div class="list-actions">
-        <span class="list-selection-count">${selectedTickets.length} selected</span>
-        ${buttons.join("")}
-      </div>
-    `;
 }
 
 export function createListBoardModule(ctx, options) {
@@ -127,48 +102,6 @@ export function createListBoardModule(ctx, options) {
     paintVisibleListRows();
   }
 
-  function renderListRow(entry) {
-    const { ticket, indent } = entry;
-    const tags = ticket.tags
-      .map((tag) => renderTag(tag, ctx.escapeHtml))
-      .join("");
-    const blockedByTickets = state.boardTickets.filter((candidate) => ticket.blockerIds.includes(candidate.id));
-    const blockedBy = blockedByTickets.length
-      ? `blocked by ${blockedByTickets
-          .map(
-            (blocker) =>
-              `<span class="ticket-ref-inline${blocker.isResolved ? " ticket-ref-resolved" : ""}">#${blocker.id}</span>`,
-          )
-          .join(", ")}`
-      : "";
-    const blocks = state.boardTickets
-      .filter((candidate) => candidate.id !== ticket.id && candidate.blockerIds.includes(ticket.id))
-      .map(
-        (candidate) =>
-          `<span class="ticket-ref-inline${candidate.isResolved ? " ticket-ref-resolved" : ""}">#${candidate.id}</span>`,
-      );
-    const relations = [
-      blockedBy,
-      blocks.length ? `blocks ${blocks.join(", ")}` : "",
-    ].filter(Boolean).join(" · ");
-    const lane = state.boardDetail.lanes.find((item) => item.id === ticket.laneId);
-    const statusIcons = renderTicketStatusIcons(ticket);
-    return `
-      <div class="list-row ${ticket.isResolved ? "resolved" : ""} ${ticket.isArchived ? "archived" : ""}" style="height:${LIST_ROW_HEIGHT}px">
-        <input type="checkbox" data-list-ticket-id="${ticket.id}" ${state.selectedListTicketIds.includes(ticket.id) ? "checked" : ""} />
-        <button type="button" class="list-ticket-link indent-${indent}" data-open-ticket-id="${ticket.id}">
-          <span class="ticket-id">#${ticket.id}</span>
-          <span>${ctx.escapeHtml(ticket.title)}</span>
-        </button>
-        <div class="list-cell muted">${relations || "-"}</div>
-        <div class="tag-list">${tags || '<span class="muted">-</span>'}</div>
-        <div class="list-cell">${ticket.priority}</div>
-        <div class="list-cell muted">${ctx.escapeHtml(lane?.name || "Open")}</div>
-        <div class="list-cell list-status-cell">${statusIcons || '<span class="muted">-</span>'}</div>
-      </div>
-    `;
-  }
-
   function paintVisibleListRows() {
     if (!listModel) {
       return;
@@ -187,7 +120,14 @@ export function createListBoardModule(ctx, options) {
     );
     const visibleEntries = listModel.orderedTickets.slice(startIndex, endIndex);
     windowEl.style.transform = `translateY(${startIndex * listModel.rowHeight}px)`;
-    windowEl.innerHTML = visibleEntries.map(renderListRow).join("");
+    windowEl.innerHTML = visibleEntries.map((entry) => renderListRow(entry, {
+      boardTickets: state.boardTickets,
+      escapeHtml: ctx.escapeHtml,
+      lanes: state.boardDetail.lanes,
+      renderTicketStatusIcons,
+      rowHeight: LIST_ROW_HEIGHT,
+      selectedTicketIds: state.selectedListTicketIds,
+    })).join("");
   }
 
   async function updateSelectedListTickets(isResolved) {
