@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { createBoard, createTicket, startTestApp } from "./helpers.js";
+import { createBoard, createTag, createTicket, startTestApp } from "./helpers.js";
 
 test("ticket editor creates updates archives restores and deletes tickets", async ({ page }) => {
   const { baseUrl, close } = await startTestApp(page);
@@ -132,16 +132,29 @@ test("ticket editor manages parent blocker and child relations", async ({ page }
       title: "Child relation candidate",
       priority: 6,
     });
+    await createTag(page.request, baseUrl, boardPayload.board.id, {
+      name: "Focus tag",
+      color: "#1f6f5f",
+    });
 
     await page.goto(`${baseUrl}/tickets/${mainTicket.id}`);
     await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
     await page.locator("#header-edit-button").click();
 
+    await page.locator("#ticket-tag-search").fill("Focus");
+    await expect(page.locator("#ticket-tag-options")).toHaveJSProperty("hidden", false);
+
     await page.locator("#ticket-parent-search").fill("Parent relation");
+    await expect(page.locator("#ticket-parent-options")).toHaveJSProperty("hidden", false);
+    await expect(page.locator("#ticket-tag-options")).toHaveJSProperty("hidden", true);
     await page.locator("#ticket-parent-search").press("Enter");
     await expect(page.locator("#ticket-parent-summary")).toContainText("Parent relation candidate");
     await expect(page.locator("#ticket-child-search")).toBeDisabled();
     await expect(page.locator("#ticket-child-summary")).toContainText("Clear parent to edit children");
+
+    await page.locator("#ticket-blocker-search").fill("Blocker relation");
+    await expect(page.locator("#ticket-blocker-options")).toHaveJSProperty("hidden", false);
+    await expect(page.locator("#ticket-parent-options")).toHaveJSProperty("hidden", true);
 
     const parentSaveResponse = page.waitForResponse(
       (response) =>
