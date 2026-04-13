@@ -103,3 +103,92 @@ test("ticket editor creates updates archives restores and deletes tickets", asyn
     await close();
   }
 });
+
+test("ticket editor manages parent blocker and child relations", async ({ page }) => {
+  const { baseUrl, close } = await startTestApp(page);
+
+  try {
+    const boardPayload = await createBoard(page.request, baseUrl, {
+      name: "Relation Editor Board",
+      laneNames: ["Todo"],
+    });
+    const lane = boardPayload.lanes[0];
+    const mainTicket = await createTicket(page.request, baseUrl, boardPayload.board.id, {
+      laneId: lane.id,
+      title: "Main relation ticket",
+    });
+    await createTicket(page.request, baseUrl, boardPayload.board.id, {
+      laneId: lane.id,
+      title: "Parent relation candidate",
+      priority: 8,
+    });
+    await createTicket(page.request, baseUrl, boardPayload.board.id, {
+      laneId: lane.id,
+      title: "Blocker relation candidate",
+      priority: 7,
+    });
+    await createTicket(page.request, baseUrl, boardPayload.board.id, {
+      laneId: lane.id,
+      title: "Child relation candidate",
+      priority: 6,
+    });
+
+    await page.goto(`${baseUrl}/tickets/${mainTicket.id}`);
+    await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
+    await page.locator("#header-edit-button").click();
+
+    await page.locator("#ticket-parent-search").fill("Parent relation");
+    await page.locator("#ticket-parent-search").press("Enter");
+    await expect(page.locator("#ticket-parent-summary")).toContainText("Parent relation candidate");
+    await expect(page.locator("#ticket-child-search")).toBeDisabled();
+    await expect(page.locator("#ticket-child-summary")).toContainText("Clear parent to edit children");
+
+    const parentSaveResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/tickets/${mainTicket.id}`) &&
+        response.request().method() === "PATCH",
+    );
+    await page.locator("#save-ticket-button").click();
+    expect((await parentSaveResponse).status()).toBe(200);
+    await expect(page.locator("#ticket-view")).toBeVisible();
+    await expect(page.locator("#ticket-relations")).toContainText("Parent");
+    await expect(page.locator("#ticket-relations")).toContainText("Parent relation candidate");
+
+    await page.locator("#header-edit-button").click();
+    await page.locator("[data-remove-parent-id]").click();
+    await expect(page.locator("#ticket-parent-summary")).not.toContainText("Parent relation candidate");
+    await expect(page.locator("#ticket-child-search")).not.toBeDisabled();
+
+    await page.locator("#ticket-blocker-search").fill("Blocker relation");
+    await page.locator("#ticket-blocker-search").press("Enter");
+    await expect(page.locator("#ticket-blocker-summary")).toContainText("Blocker relation candidate");
+    await page.locator("[data-remove-blocker-id]").click();
+    await expect(page.locator("#ticket-blocker-summary")).not.toContainText("Blocker relation candidate");
+    await page.locator("#ticket-blocker-search").fill("Blocker relation");
+    await page.locator("#ticket-blocker-search").press("Enter");
+
+    await page.locator("#ticket-child-search").fill("Child relation");
+    await page.locator("#ticket-child-search").press("Enter");
+    await expect(page.locator("#ticket-child-summary")).toContainText("Child relation candidate");
+    await page.locator("[data-remove-child-id]").click();
+    await expect(page.locator("#ticket-child-summary")).not.toContainText("Child relation candidate");
+    await page.locator("#ticket-child-search").fill("Child relation");
+    await page.locator("#ticket-child-search").press("Enter");
+
+    const relationSaveResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/tickets/${mainTicket.id}`) &&
+        response.request().method() === "PATCH",
+    );
+    await page.locator("#save-ticket-button").click();
+    expect((await relationSaveResponse).status()).toBe(200);
+    await expect(page.locator("#ticket-view")).toBeVisible();
+    await expect(page.locator("#ticket-relations")).not.toContainText("Parent relation candidate");
+    await expect(page.locator("#ticket-relations")).toContainText("Blocked By");
+    await expect(page.locator("#ticket-relations")).toContainText("Blocker relation candidate");
+    await expect(page.locator("#ticket-relations")).toContainText("Children");
+    await expect(page.locator("#ticket-relations")).toContainText("Child relation candidate");
+  } finally {
+    await close();
+  }
+});
