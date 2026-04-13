@@ -174,6 +174,7 @@ export function createEditorModule(ctx) {
     elements.ticketChildSearch.value = "";
     elements.ticketChildrenRow.hidden = !ticketId;
     clearSaveState();
+    commentsModule.clearCommentState();
     tagPicker.syncOptions();
     relationsModule.syncOptions();
     setDialogMode(ticketId ? mode : "edit");

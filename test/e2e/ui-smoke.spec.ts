@@ -268,6 +268,14 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await expect(page.locator("#editor-save-state")).toBeHidden();
     await expect(page.locator("#comment-body")).toHaveValue("");
 
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Parent candidate" }).click();
+    await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
+    await expect(page.locator("#comment-save-state")).toBeHidden();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Smoke ticket" }).click();
+    await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
+
     await expect(page.locator("[data-edit-comment-id]")).toBeHidden();
     await page.locator("[data-toggle-comment-actions]").click();
     await expect(page.locator("[data-toggle-comment-actions]")).toHaveAttribute("aria-expanded", "true");

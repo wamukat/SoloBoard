@@ -231,6 +231,7 @@ export function createTicketCommentsModule(ctx) {
 
   return {
     addComment,
+    clearCommentState,
     handleCommentAction,
     renderComments,
   };
