@@ -30,6 +30,11 @@ import {
   getTagsForTicketIds,
 } from "./db-ticket-loaders.js";
 import {
+  getTicketRowsForBoard,
+  listTicketRows,
+  type ListTicketsFilters,
+} from "./db-ticket-queries.js";
+import {
   addActivity,
   replaceTicketBlockers,
   replaceTicketTags,
@@ -55,15 +60,6 @@ import {
   type TicketSummaryView,
   type TicketView,
 } from "./types.js";
-
-type ListTicketsFilters = {
-  laneId?: number;
-  tag?: string;
-  resolved?: boolean;
-  q?: string;
-  archived?: boolean;
-  includeArchived?: boolean;
-};
 
 type CreateBoardInput = {
   name: string;
@@ -334,7 +330,7 @@ export class KanbanDb {
   }
 
   listTicketSummaries(boardId: Id, filters: ListTicketsFilters = {}): TicketSummaryView[] {
-    const rows = this.listTicketRows(boardId, filters);
+    const rows = listTicketRows(this.sqlite, boardId, filters);
     const ticketIds = rows.map((row) => row.id);
     const tagsByTicket = getTagsForTicketIds(this.sqlite, ticketIds);
     const blockerIdsByTicket = getBlockerIdsForTicketIds(this.sqlite, ticketIds);
@@ -350,7 +346,7 @@ export class KanbanDb {
   }
 
   listTickets(boardId: Id, filters: ListTicketsFilters = {}): TicketView[] {
-    const rows = this.listTicketRows(boardId, filters);
+    const rows = listTicketRows(this.sqlite, boardId, filters);
     const ticketIds = rows.map((row) => row.id);
     const tagsByTicket = getTagsForTicketIds(this.sqlite, ticketIds);
     const commentsByTicket = getCommentsForTicketIds(this.sqlite, ticketIds);
@@ -660,7 +656,7 @@ export class KanbanDb {
     const laneRows = this.listLanes(boardId);
     const lanes = new Set(laneRows.map((lane) => lane.id));
     const laneNameById = new Map(laneRows.map((lane) => [lane.id, lane.name]));
-    const currentRows = this.getTicketRowsForBoard(boardId, items.map((item) => item.ticketId));
+    const currentRows = getTicketRowsForBoard(this.sqlite, boardId, items.map((item) => item.ticketId));
     const currentRowsById = new Map(currentRows.map((row) => [row.id, row]));
     const updateStmt = this.sqlite.prepare("UPDATE tickets SET lane_id = ?, position = ?, updated_at = ? WHERE id = ?");
     const tx = this.sqlite.transaction(() => {
@@ -695,7 +691,7 @@ export class KanbanDb {
   }
 
   bulkResolveTickets(input: BulkResolveTicketsInput): TicketSummaryView[] {
-    const rows = this.getTicketRowsForBoard(input.boardId, input.ticketIds);
+    const rows = getTicketRowsForBoard(this.sqlite, input.boardId, input.ticketIds);
     if (rows.length !== input.ticketIds.length) {
       throw new Error("Some tickets do not belong to board");
     }
@@ -721,7 +717,7 @@ export class KanbanDb {
   }
 
   bulkTransitionTickets(input: BulkTransitionTicketsInput): TicketSummaryView[] {
-    const rows = this.getTicketRowsForBoard(input.boardId, input.ticketIds);
+    const rows = getTicketRowsForBoard(this.sqlite, input.boardId, input.ticketIds);
     if (rows.length !== input.ticketIds.length) {
       throw new Error("Some tickets do not belong to board");
     }
@@ -769,7 +765,7 @@ export class KanbanDb {
   }
 
   bulkArchiveTickets(input: BulkArchiveTicketsInput): TicketSummaryView[] {
-    const rows = this.getTicketRowsForBoard(input.boardId, input.ticketIds);
+    const rows = getTicketRowsForBoard(this.sqlite, input.boardId, input.ticketIds);
     if (rows.length !== input.ticketIds.length) {
       throw new Error("Some tickets do not belong to board");
     }
@@ -833,72 +829,8 @@ export class KanbanDb {
     return row ?? null;
   }
 
-  private getTicketRowsForBoard(boardId: Id, ticketIds: Id[]): TicketRow[] {
-    if (ticketIds.length === 0) {
-      return [];
-    }
-    const uniqueIds = [...new Set(ticketIds)];
-    const placeholders = uniqueIds.map(() => "?").join(", ");
-    return this.sqlite
-      .prepare(
-        `SELECT * FROM tickets WHERE board_id = ? AND id IN (${placeholders}) ORDER BY id ASC`,
-      )
-      .all(boardId, ...uniqueIds) as TicketRow[];
-  }
-
-  private listTicketRows(boardId: Id, filters: ListTicketsFilters = {}): TicketRow[] {
-    let sql = `
-      SELECT t.*
-      FROM tickets t
-      WHERE t.board_id = ?
-    `;
-    const params: Array<string | number> = [boardId];
-
-    if (typeof filters.laneId === "number") {
-      sql += " AND t.lane_id = ?";
-      params.push(filters.laneId);
-    }
-    if (typeof filters.resolved === "boolean") {
-      sql += " AND t.is_resolved = ?";
-      params.push(filters.resolved ? 1 : 0);
-    }
-    if (filters.archived === true) {
-      sql += " AND t.is_archived = 1";
-    } else if (filters.archived === false || !filters.includeArchived) {
-      sql += " AND t.is_archived = 0";
-    }
-    if (filters.q) {
-      const q = filters.q.trim();
-      const priorityMatch = /^(?:p|priority):(-?\d+)$/i.exec(q);
-      if (priorityMatch) {
-        sql += " AND t.priority = ?";
-        params.push(Number(priorityMatch[1]));
-      } else {
-        const idQuery = q.startsWith("#") ? q.slice(1) : q;
-        const likeQuery = `%${q}%`;
-        sql += " AND (t.title LIKE ? OR t.body_markdown LIKE ? OR CAST(t.id AS TEXT) LIKE ? OR ('#' || t.id) LIKE ?)";
-        params.push(likeQuery, likeQuery, `%${idQuery}%`, likeQuery);
-      }
-    }
-    if (filters.tag) {
-      sql += `
-        AND EXISTS (
-          SELECT 1
-          FROM ticket_tags tt
-          INNER JOIN tags tag ON tag.id = tt.tag_id
-          WHERE tt.ticket_id = t.id
-            AND tag.name = ?
-        )
-      `;
-      params.push(filters.tag);
-    }
-    sql += " ORDER BY t.lane_id ASC, t.is_archived ASC, t.position ASC, t.id ASC";
-
-    return this.sqlite.prepare(sql).all(...params) as TicketRow[];
-  }
-
   private listTicketSummariesByIds(boardId: Id, ticketIds: Id[]): TicketSummaryView[] {
-    const rows = this.getTicketRowsForBoard(boardId, ticketIds);
+    const rows = getTicketRowsForBoard(this.sqlite, boardId, ticketIds);
     const order = new Map(ticketIds.map((ticketId, index) => [ticketId, index]));
     const tagsByTicket = getTagsForTicketIds(this.sqlite, rows.map((row) => row.id));
     const blockerIdsByTicket = getBlockerIdsForTicketIds(this.sqlite, rows.map((row) => row.id));
