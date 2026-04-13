@@ -1,6 +1,8 @@
 import { takeRoundRobinBatch } from "./app-board-utils.js";
 import { createListBoardModule } from "./app-board-list.js";
 import { createBoardSettingsModule } from "./app-board-settings.js";
+import { createInlineTextForm } from "./app-inline-text-form.js";
+import { createSidebarBoardsModule } from "./app-sidebar-boards.js";
 import { createSidebarTagsModule } from "./app-sidebar-tags.js";
 import { icon } from "./icons.js";
 import { renderTag } from "./app-tags.js";
@@ -14,6 +16,10 @@ export function createBoardModule(ctx) {
     { hasUserTicketFilters, renderEmptyState, renderTicketStatusIcons },
   );
   const boardSettingsModule = createBoardSettingsModule(ctx);
+  const sidebarBoardsModule = createSidebarBoardsModule(ctx, {
+    syncSidebar: boardSettingsModule.syncSidebar,
+    cancelLaneCreate,
+  });
   const sidebarTagsModule = createSidebarTagsModule(ctx);
 
   function renderEmptyState({ iconName, title, body, actionLabel = "", actionAttr = "" }) {
@@ -28,69 +34,6 @@ export function createBoardModule(ctx) {
         ${action}
       </div>
     `;
-  }
-
-  function renderBoards() {
-    const hasBoards = state.boards.length > 0;
-    if (!hasBoards && state.sidebarCollapsed) {
-      state.sidebarCollapsed = false;
-      localStorage.setItem("soloboard:sidebar-collapsed", "false");
-      boardSettingsModule.syncSidebar();
-    }
-    elements.shell.classList.toggle("no-boards", !hasBoards);
-    elements.boardList.innerHTML = "";
-    for (const board of state.boards) {
-      const button = document.createElement("button");
-      button.className = `board-button ${board.id === state.activeBoardId ? "active" : ""}`;
-      button.draggable = true;
-      button.dataset.boardId = String(board.id);
-      button.textContent = board.name;
-      button.addEventListener("click", async () => {
-        cancelBoardCreate();
-        cancelLaneCreate();
-        await ctx.selectBoard(board.id);
-      });
-      bindBoardDrag(button);
-      elements.boardList.append(button);
-    }
-    if (state.isCreatingBoard) {
-      elements.boardList.append(createBoardInputRow());
-    }
-    elements.newBoardButton.hidden = state.isCreatingBoard;
-    const shouldGuideBoardCreate = !hasBoards && !state.isCreatingBoard;
-    elements.newBoardButton.classList.toggle("is-empty-target", shouldGuideBoardCreate);
-    elements.newBoardButton.title = shouldGuideBoardCreate ? "Create your first board" : "New board";
-    elements.newBoardButton.setAttribute(
-      "aria-label",
-      shouldGuideBoardCreate ? "Create your first board" : "New board",
-    );
-  }
-
-  function createBoardInputRow() {
-    return createInlineTextForm({
-      className: "board-create-row",
-      html: '<input type="text" data-board-create-input aria-label="Board name" placeholder="Board name" autocomplete="off" />',
-      inputSelector: "[data-board-create-input]",
-      onSubmit: submitBoardCreate,
-      onCancel: cancelBoardCreate,
-    });
-  }
-
-  function bindBoardDrag(button) {
-    button.addEventListener("dragstart", (event) => {
-      state.activeBoardDragId = Number(button.dataset.boardId);
-      button.classList.add("dragging-board");
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", button.dataset.boardId);
-    });
-    button.addEventListener("dragend", async () => {
-      if (state.activeBoardDragId == null) {
-        return;
-      }
-      button.classList.remove("dragging-board");
-      state.activeBoardDragId = null;
-      await persistBoardOrder();
-    });
   }
 
   function renderBoardDetail() {
@@ -236,38 +179,6 @@ export function createBoardModule(ctx) {
       onSubmit: submitLaneCreate,
       onCancel: cancelLaneCreate,
     });
-  }
-
-  function createInlineTextForm({ className, html, inputSelector, onSubmit, onCancel }) {
-    const form = document.createElement("form");
-    form.className = className;
-    form.innerHTML = html;
-
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      await onSubmit(form.querySelector(inputSelector));
-    });
-    form.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape") {
-        return;
-      }
-      event.preventDefault();
-      onCancel();
-    });
-    form.addEventListener("focusout", () => {
-      window.setTimeout(() => {
-        const input = form.querySelector(inputSelector);
-        if (!form.contains(document.activeElement) && !input?.value.trim()) {
-          onCancel();
-        }
-      });
-    });
-
-    requestAnimationFrame(() => {
-      form.querySelector(inputSelector)?.focus();
-    });
-
-    return form;
   }
 
   function toggleInlineActionMenu(toggleButton) {
@@ -461,48 +372,6 @@ export function createBoardModule(ctx) {
     await ctx.refreshBoardDetail();
   }
 
-  async function persistBoardOrder() {
-    const boardIds = [...elements.boardList.querySelectorAll(".board-button")].map((button) => Number(button.dataset.boardId));
-    if (boardIds.length !== state.boards.length || boardIds.every((boardId, index) => boardId === state.boards[index]?.id)) {
-      return;
-    }
-    const data = await ctx.sendJson("/api/boards/reorder", {
-      method: "POST",
-      body: { boardIds },
-    });
-    state.boards = data.boards;
-    renderBoards();
-  }
-
-  async function createBoard() {
-    state.isCreatingBoard = true;
-    renderBoards();
-  }
-
-  async function submitBoardCreate(input) {
-    const name = input?.value.trim() ?? "";
-    if (!name) {
-      cancelBoardCreate();
-      return;
-    }
-    const created = await ctx.sendJson("/api/boards", {
-      method: "POST",
-      body: { name },
-    });
-    state.isCreatingBoard = false;
-    state.activeBoardId = created.board.id;
-    await ctx.refreshBoards();
-    ctx.syncBoardUrl();
-  }
-
-  function cancelBoardCreate() {
-    if (!state.isCreatingBoard) {
-      return;
-    }
-    state.isCreatingBoard = false;
-    renderBoards();
-  }
-
   async function createLane() {
     if (!state.activeBoardId) {
       return;
@@ -594,49 +463,17 @@ export function createBoardModule(ctx) {
     ).element;
   }
 
-  function handleBoardListDragOver(event) {
-    const dragging =
-      state.activeBoardDragId == null
-        ? null
-        : elements.boardList.querySelector(`.board-button[data-board-id="${state.activeBoardDragId}"]`);
-    if (!dragging) {
-      return;
-    }
-    event.preventDefault();
-    const afterElement = getBoardAfterElement(elements.boardList, event.clientY);
-    if (!afterElement) {
-      elements.boardList.append(dragging);
-      return;
-    }
-    elements.boardList.insertBefore(dragging, afterElement);
-  }
-
-  function getBoardAfterElement(container, y) {
-    const boardButtons = [...container.querySelectorAll(".board-button:not(.dragging-board)")];
-    return boardButtons.reduce(
-      (closest, button) => {
-        const box = button.getBoundingClientRect();
-        const offset = y - box.top - box.height / 2;
-        if (offset < 0 && offset > closest.offset) {
-          return { offset, element: button };
-        }
-        return closest;
-      },
-      { offset: Number.NEGATIVE_INFINITY, element: null },
-    ).element;
-  }
-
-  elements.boardList.addEventListener("dragover", handleBoardListDragOver);
+  elements.boardList.addEventListener("dragover", sidebarBoardsModule.handleBoardListDragOver);
   elements.listBoard.addEventListener("click", listModule.handleListBoardClick);
   elements.listBoard.addEventListener("change", listModule.handleListBoardChange);
   elements.listBoard.addEventListener("scroll", listModule.handleListBoardScroll, true);
 
   return {
-    renderBoards,
+    renderBoards: sidebarBoardsModule.renderBoards,
     renderBoardDetail,
     renderSidebarTags: sidebarTagsModule.renderSidebarTags,
     handleLaneDragOver,
-    createBoard,
+    createBoard: sidebarBoardsModule.createBoard,
     createLane,
     renameBoard: boardSettingsModule.renameBoard,
     deleteBoard: boardSettingsModule.deleteBoard,

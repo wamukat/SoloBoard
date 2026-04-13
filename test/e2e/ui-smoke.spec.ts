@@ -583,6 +583,65 @@ test("sidebar board settings actions are wired", async ({ page }) => {
   }
 });
 
+test("sidebar board list create and reorder are wired", async ({ page }) => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+  });
+  const port = await getFreePort();
+  await app.listen({ host: "127.0.0.1", port });
+
+  try {
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const alphaResponse = await page.request.post(`${baseUrl}/api/boards`, {
+      data: { name: "Alpha Board", laneNames: ["todo"] },
+    });
+    expect(alphaResponse.status()).toBe(201);
+    const alphaPayload = await alphaResponse.json();
+    const betaResponse = await page.request.post(`${baseUrl}/api/boards`, {
+      data: { name: "Beta Board", laneNames: ["todo"] },
+    });
+    expect(betaResponse.status()).toBe(201);
+
+    await page.goto(`${baseUrl}/boards/${alphaPayload.board.id}`);
+    await expect(page.locator("#board-title")).toHaveText("Alpha Board");
+    await page.locator("#new-board-button").click();
+    await expect(page.locator("[data-board-create-input]")).toBeFocused();
+    await expect(page.locator("#new-board-button")).toBeHidden();
+    await page.locator("[data-board-create-input]").fill("Canceled Board");
+    await page.locator("[data-board-create-input]").press("Escape");
+    await expect(page.getByRole("button", { name: "Canceled Board" })).toHaveCount(0);
+    await expect(page.locator("#new-board-button")).toBeVisible();
+
+    await page.locator("#new-board-button").click();
+    await page.locator("[data-board-create-input]").fill("Gamma Board");
+    const createResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/boards") &&
+        response.request().method() === "POST",
+    );
+    await page.locator("[data-board-create-input]").press("Enter");
+    expect((await createResponse).status()).toBe(201);
+    await expect(page.locator("#board-title")).toHaveText("Gamma Board");
+    await page.getByRole("button", { name: "Alpha Board" }).click();
+    await expect(page.locator("#board-title")).toHaveText("Alpha Board");
+    await expect(page.locator("#board-list .board-button").first()).toHaveText("Alpha Board");
+
+    await Promise.all([
+      page.waitForResponse((response) => response.url().endsWith("/api/boards/reorder") && response.status() === 200),
+      page.getByRole("button", { name: "Gamma Board" }).dragTo(page.getByRole("button", { name: "Alpha Board" }), {
+        targetPosition: { x: 8, y: 4 },
+      }),
+    ]);
+    await expect(page.locator("#board-list .board-button").first()).toHaveText("Gamma Board");
+    await page.reload();
+    await expect(page.locator("#board-list .board-button").first()).toHaveText("Gamma Board");
+  } finally {
+    await page.close();
+    await app.close();
+  }
+});
+
 test("long tag labels are constrained across ticket surfaces", async ({ page }) => {
   const app = buildApp({
     dbFile: createDbFile(),
