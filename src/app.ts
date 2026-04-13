@@ -7,7 +7,9 @@ import fastifyStatic from "@fastify/static";
 
 import { KanbanDb } from "./db.js";
 import { registerBoardRoutes } from "./routes/boards.js";
+import { registerLaneRoutes } from "./routes/lanes.js";
 import { registerSystemRoutes } from "./routes/system.js";
+import { registerTagRoutes } from "./routes/tags.js";
 import { registerWebRoutes } from "./routes/web.js";
 import {
   type BoardDetailView,
@@ -704,214 +706,31 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     serializeBoardDetail,
   });
 
-  app.get("/api/boards/:boardId/lanes", {
-    schema: {
-      params: idParamsSchema("boardId"),
-      response: {
-        200: lanesResponseSchema,
-        404: errorSchema,
-      },
+  registerLaneRoutes(app, {
+    db,
+    getIdParam,
+    publishBoardEvent,
+    schemas: {
+      errorSchema,
+      idParamsSchema,
+      laneBodySchema,
+      laneViewSchema,
+      lanesResponseSchema,
+      reorderLanesBodySchema,
     },
-  }, async (request, reply) => {
-    const boardId = getIdParam(request.params, "boardId");
-    if (!db.getBoard(boardId)) {
-      return reply.code(404).send({ error: "board not found" });
-    }
-    return { lanes: db.listLanes(boardId) };
   });
-
-  app.post("/api/boards/:boardId/lanes", {
-    schema: {
-      params: idParamsSchema("boardId"),
-      body: laneBodySchema,
-      response: {
-        201: laneViewSchema,
-        400: errorSchema,
-        404: errorSchema,
-      },
+  registerTagRoutes(app, {
+    db,
+    getIdParam,
+    publishBoardEvent,
+    schemas: {
+      errorSchema,
+      idParamsSchema,
+      tagCreateBodySchema,
+      tagUpdateBodySchema,
+      tagViewSchema,
+      tagsResponseSchema,
     },
-  }, async (request, reply) => {
-    const boardId = getIdParam(request.params, "boardId");
-    const body = request.body as { name?: string };
-    const name = body?.name?.trim();
-    if (!db.getBoard(boardId)) {
-      return reply.code(404).send({ error: "board not found" });
-    }
-    if (!name) {
-      return reply.code(400).send({ error: "name is required" });
-    }
-    const lane = db.createLane({ boardId, name });
-    publishBoardEvent(boardId);
-    return reply.code(201).send(lane);
-  });
-
-  app.patch("/api/lanes/:laneId", {
-    schema: {
-      params: idParamsSchema("laneId"),
-      body: laneBodySchema,
-      response: {
-        200: laneViewSchema,
-        400: errorSchema,
-        404: errorSchema,
-      },
-    },
-  }, async (request, reply) => {
-    const body = request.body as { name?: string };
-    const name = body?.name?.trim();
-    if (!name) {
-      return reply.code(400).send({ error: "name is required" });
-    }
-    try {
-      const lane = db.updateLane(getIdParam(request.params, "laneId"), name);
-      publishBoardEvent(lane.boardId);
-      return lane;
-    } catch {
-      return reply.code(404).send({ error: "lane not found" });
-    }
-  });
-
-  app.delete("/api/lanes/:laneId", {
-    schema: {
-      params: idParamsSchema("laneId"),
-      response: {
-        204: { type: "null" },
-        404: errorSchema,
-        409: errorSchema,
-      },
-    },
-  }, async (request, reply) => {
-    const laneId = getIdParam(request.params, "laneId");
-    const lane = db.getLane(laneId);
-    if (!lane) {
-      return reply.code(404).send({ error: "lane not found" });
-    }
-    try {
-      db.deleteLane(laneId);
-      publishBoardEvent(lane.boardId);
-      return reply.code(204).send();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "lane delete failed";
-      const code = message === "Lane is not empty" ? 409 : 404;
-      return reply.code(code).send({ error: message.toLowerCase() });
-    }
-  });
-
-  app.post("/api/boards/:boardId/lanes/reorder", {
-    schema: {
-      params: idParamsSchema("boardId"),
-      body: reorderLanesBodySchema,
-      response: {
-        200: lanesResponseSchema,
-        400: errorSchema,
-      },
-    },
-  }, async (request, reply) => {
-    const boardId = getIdParam(request.params, "boardId");
-    const body = request.body as { laneIds?: number[] };
-    if (!Array.isArray(body?.laneIds)) {
-      return reply.code(400).send({ error: "laneIds is required" });
-    }
-    try {
-      const lanes = db.reorderLanes(boardId, body.laneIds);
-      publishBoardEvent(boardId);
-      return { lanes };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "lane reorder failed";
-      return reply.code(400).send({ error: message });
-    }
-  });
-
-  app.get("/api/boards/:boardId/tags", {
-    schema: {
-      params: idParamsSchema("boardId"),
-      response: {
-        200: tagsResponseSchema,
-        404: errorSchema,
-      },
-    },
-  }, async (request, reply) => {
-    const boardId = getIdParam(request.params, "boardId");
-    if (!db.getBoard(boardId)) {
-      return reply.code(404).send({ error: "board not found" });
-    }
-    return { tags: db.listTags(boardId) };
-  });
-
-  app.post("/api/boards/:boardId/tags", {
-    schema: {
-      params: idParamsSchema("boardId"),
-      body: tagCreateBodySchema,
-      response: {
-        201: tagViewSchema,
-        400: errorSchema,
-        404: errorSchema,
-        409: errorSchema,
-      },
-    },
-  }, async (request, reply) => {
-    const boardId = getIdParam(request.params, "boardId");
-    const body = request.body as { name?: string; color?: string };
-    const name = body?.name?.trim();
-    if (!db.getBoard(boardId)) {
-      return reply.code(404).send({ error: "board not found" });
-    }
-    if (!name) {
-      return reply.code(400).send({ error: "name is required" });
-    }
-    try {
-      const tag = db.createTag({ boardId, name, color: body?.color?.trim() });
-      publishBoardEvent(boardId);
-      return reply.code(201).send(tag);
-    } catch {
-      return reply.code(409).send({ error: "tag already exists" });
-    }
-  });
-
-  app.patch("/api/tags/:tagId", {
-    schema: {
-      params: idParamsSchema("tagId"),
-      body: tagUpdateBodySchema,
-      response: {
-        200: tagViewSchema,
-        400: errorSchema,
-        404: errorSchema,
-      },
-    },
-  }, async (request, reply) => {
-    const body = request.body as { name?: string; color?: string };
-    try {
-      const tag = db.updateTag(getIdParam(request.params, "tagId"), {
-        name: body?.name?.trim(),
-        color: body?.color?.trim(),
-      });
-      publishBoardEvent(tag.boardId);
-      return tag;
-    } catch {
-      return reply.code(404).send({ error: "tag not found" });
-    }
-  });
-
-  app.delete("/api/tags/:tagId", {
-    schema: {
-      params: idParamsSchema("tagId"),
-      response: {
-        204: { type: "null" },
-        404: errorSchema,
-      },
-    },
-  }, async (request, reply) => {
-    const tagId = getIdParam(request.params, "tagId");
-    const tag = db.getTag(tagId);
-    if (!tag) {
-      return reply.code(404).send({ error: "tag not found" });
-    }
-    try {
-      db.deleteTag(tagId);
-      publishBoardEvent(tag.boardId);
-      return reply.code(204).send();
-    } catch {
-      return reply.code(404).send({ error: "tag not found" });
-    }
   });
 
   app.get("/api/boards/:boardId/tickets", {
