@@ -168,6 +168,7 @@ button:hover,
   display: flex;
   align-items: center;
   gap: 0.45rem;
+  min-width: fit-content;
 }
 
 .board-title-row {
@@ -1713,6 +1714,10 @@ button:hover,
   color: var(--danger);
 }
 
+.comment-save-state {
+  min-width: 0;
+}
+
 .editor-dialog-heading-top {
   display: flex;
   align-items: center;
@@ -2167,14 +2172,15 @@ button:hover,
   bottom: 1rem;
   max-width: 320px;
   padding: 0.8rem 0.95rem;
-  border: 1px solid rgba(104, 99, 85, 0.22);
-  background: rgba(28, 28, 23, 0.92);
+  border: 1px solid rgba(31, 111, 95, 0.42);
+  background: rgba(31, 111, 95, 0.96);
   color: #fffdf7;
   box-shadow: var(--shadow);
   z-index: 40;
 }
 
 .toast[data-kind="error"] {
+  border-color: rgba(143, 42, 28, 0.46);
   background: rgba(143, 42, 28, 0.96);
 }
 

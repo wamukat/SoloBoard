@@ -33,6 +33,8 @@ test("ticket editor creates updates archives restores and deletes tickets", asyn
     expect(createdTicketResponse.status()).toBe(201);
     const createdTicket = await createdTicketResponse.json();
     await expect(page.locator("#editor-dialog")).not.toHaveJSProperty("open", true);
+    await expect(page.locator("#toast")).toHaveText("Ticket created");
+    await expect(page.locator("#toast")).toHaveCSS("background-color", "rgba(31, 111, 95, 0.96)");
     await expect(page.locator(".lane", { has: page.locator(".lane-title", { hasText: "Review" }) })).toContainText("Created from editor");
 
     await page.getByRole("button", { name: "Created from editor" }).click();

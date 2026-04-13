@@ -2,6 +2,40 @@ import { icon } from "./icons.js";
 
 export function createTicketCommentsModule(ctx) {
   const { state, elements } = ctx;
+  let commentStateTimer = null;
+
+  function clearCommentState() {
+    if (commentStateTimer) {
+      window.clearTimeout(commentStateTimer);
+      commentStateTimer = null;
+    }
+    if (!elements.commentSaveState) {
+      return;
+    }
+    elements.commentSaveState.hidden = true;
+    elements.commentSaveState.textContent = "";
+    elements.commentSaveState.dataset.kind = "";
+  }
+
+  function setCommentState(kind, message) {
+    if (!elements.commentSaveState) {
+      return;
+    }
+    if (commentStateTimer) {
+      window.clearTimeout(commentStateTimer);
+      commentStateTimer = null;
+    }
+    elements.commentSaveState.hidden = false;
+    elements.commentSaveState.dataset.kind = kind;
+    elements.commentSaveState.textContent = message;
+    if (kind === "saved") {
+      commentStateTimer = window.setTimeout(() => {
+        if (elements.commentSaveState.dataset.kind === "saved") {
+          clearCommentState();
+        }
+      }, 1400);
+    }
+  }
 
   function renderComments(comments) {
     if (comments.length === 0) {
@@ -55,9 +89,9 @@ export function createTicketCommentsModule(ctx) {
       await ctx.refreshDialogTicket(ticket.id);
       elements.commentBody.value = "";
       await ctx.refreshBoardDetail();
-      ctx.setSaveState("saved", "Comment saved");
+      setCommentState("saved", "Comment saved");
     } catch (error) {
-      ctx.setSaveState("error", "Save failed");
+      setCommentState("error", "Save failed");
       ctx.showToast(error.message, "error");
     } finally {
       elements.saveCommentButton.disabled = false;
@@ -159,16 +193,16 @@ export function createTicketCommentsModule(ctx) {
     }
     try {
       saveButton.disabled = true;
-      ctx.setSaveState("saving", "Saving...");
+      setCommentState("saving", "Saving...");
       await ctx.sendJson(`/api/comments/${saveButton.dataset.saveCommentId}`, {
         method: "PATCH",
         body: { bodyMarkdown },
       });
       await ctx.refreshDialogTicket();
       await ctx.refreshBoardDetail();
-      ctx.setSaveState("saved", "Saved");
+      setCommentState("saved", "Saved");
     } catch (error) {
-      ctx.setSaveState("error", "Save failed");
+      setCommentState("error", "Save failed");
       ctx.showToast(error.message, "error");
     } finally {
       saveButton.disabled = false;
@@ -182,13 +216,13 @@ export function createTicketCommentsModule(ctx) {
       submitLabel: "Delete",
       run: async () => {
         try {
-          ctx.setSaveState("saving", "Deleting...");
+          setCommentState("saving", "Deleting...");
           await ctx.api(`/api/comments/${commentId}`, { method: "DELETE" });
           await ctx.refreshDialogTicket();
           await ctx.refreshBoardDetail();
-          ctx.setSaveState("saved", "Deleted");
+          setCommentState("saved", "Deleted");
         } catch (error) {
-          ctx.setSaveState("error", "Delete failed");
+          setCommentState("error", "Delete failed");
           throw error;
         }
       },

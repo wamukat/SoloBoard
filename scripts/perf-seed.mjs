@@ -21,6 +21,41 @@ function shuffle(values) {
   return result;
 }
 
+function tagColor(index, count) {
+  const hue = Math.round((index / count) * 360);
+  return hslToHex(hue, 52, 46);
+}
+
+function hslToHex(hue, saturationPercent, lightnessPercent) {
+  const normalizedHue = ((hue % 360) + 360) % 360;
+  const saturation = saturationPercent / 100;
+  const lightness = lightnessPercent / 100;
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const huePrime = normalizedHue / 60;
+  const x = chroma * (1 - Math.abs((huePrime % 2) - 1));
+  const [red1, green1, blue1] = huePrime < 1
+    ? [chroma, x, 0]
+    : huePrime < 2
+      ? [x, chroma, 0]
+      : huePrime < 3
+        ? [0, chroma, x]
+        : huePrime < 4
+          ? [0, x, chroma]
+          : huePrime < 5
+            ? [x, 0, chroma]
+            : [chroma, 0, x];
+  const lightnessMatch = lightness - chroma / 2;
+  return rgbToHex(
+    Math.round((red1 + lightnessMatch) * 255),
+    Math.round((green1 + lightnessMatch) * 255),
+    Math.round((blue1 + lightnessMatch) * 255),
+  );
+}
+
+function rgbToHex(red, green, blue) {
+  return `#${[red, green, blue].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
 async function api(path, options = {}) {
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -57,7 +92,7 @@ function buildPayload() {
     id: index + 1,
     boardId: 1,
     name: `tag-${String(index + 1).padStart(2, "0")}`,
-    color: `hsl(${Math.round((index / TAG_COUNT) * 360)} 52% 46%)`,
+    color: tagColor(index, TAG_COUNT),
   }));
 
   const lanePositions = new Map(lanes.map((lane) => [lane.id, 0]));

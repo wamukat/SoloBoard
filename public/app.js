@@ -94,6 +94,7 @@ const elements = {
   ticketActivity: document.querySelector("#ticket-activity"),
   commentForm: document.querySelector("#comment-form"),
   commentBody: document.querySelector("#comment-body"),
+  commentSaveState: document.querySelector("#comment-save-state"),
   saveCommentButton: document.querySelector("#save-comment-button"),
   ticketTitle: document.querySelector("#ticket-title"),
   ticketLane: document.querySelector("#ticket-lane"),

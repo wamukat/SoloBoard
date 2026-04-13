@@ -93,7 +93,7 @@ export function createTicketActionsModule(ctx, options) {
         setSaveState("saved", "Saved");
       } else {
         options.closeEditor();
-        ctx.showToast("Saved");
+        ctx.showToast("Ticket created");
       }
       await ctx.refreshBoardDetail();
       return savedTicket;

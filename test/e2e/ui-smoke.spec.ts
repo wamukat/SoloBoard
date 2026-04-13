@@ -263,6 +263,9 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await page.locator("#comment-body").fill("E2E comment **saved**");
     await page.locator("#save-comment-button").click();
     await expect(page.locator("#ticket-comments .comment-item")).toContainText("E2E comment saved");
+    await expect(page.locator("#comment-save-state")).toHaveText("Comment saved");
+    await expect(page.locator("#comment-save-state")).toBeVisible();
+    await expect(page.locator("#editor-save-state")).toBeHidden();
     await expect(page.locator("#comment-body")).toHaveValue("");
 
     await expect(page.locator("[data-edit-comment-id]")).toBeHidden();
@@ -285,6 +288,8 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await page.locator("[data-save-comment-id]").click();
     await expect(page.locator("[data-comment-edit-form]")).toBeHidden();
     await expect(page.locator("#ticket-comments .comment-item")).toContainText("E2E comment edited");
+    await expect(page.locator("#comment-save-state")).toHaveText("Saved");
+    await expect(page.locator("#editor-save-state")).toBeHidden();
 
     await expect(page.locator("[data-delete-comment-id]")).toBeHidden();
     await page.locator("[data-toggle-comment-actions]").click();
@@ -298,6 +303,8 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     expect(deleteCommentResult.status()).toBe(204);
     await expect(page.locator("#ux-dialog")).not.toHaveJSProperty("open", true);
     await expect(page.locator("#ticket-comments")).toContainText("No comments yet.");
+    await expect(page.locator("#comment-save-state")).toHaveText("Deleted");
+    await expect(page.locator("#editor-save-state")).toBeHidden();
     await page.locator("#activity-tab-button").click();
     await expect(page.locator("#activity-section")).toBeVisible();
     await expect(page.locator("#ticket-activity")).toContainText("Comment added");
@@ -434,6 +441,10 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
 
     await page.locator("#save-ticket-button").click();
     await expect(page.locator("#ticket-view")).toBeVisible();
+    await expect(page.locator("#editor-save-state")).toHaveText("Saved");
+    await expect(page.locator("#editor-save-state")).toBeVisible();
+    const ticketSaveStateInHeaderActions = await page.locator("#editor-save-state").evaluate((state) => state.parentElement?.classList.contains("editor-header-actions"));
+    expect(ticketSaveStateInHeaderActions).toBe(true);
     await expect(page.locator("#ticket-relations")).toContainText("Blocked By");
     await expect(page.locator("#ticket-relations")).toContainText("Blocker candidate");
     await expect(page.locator("#ticket-relations")).toContainText("Children");

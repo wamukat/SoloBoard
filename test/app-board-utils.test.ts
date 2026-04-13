@@ -152,6 +152,14 @@ test("perf seed requires overwrite flag when board already exists", async () => 
   assert.match(source, /SOLOBOARD_PERF_OVERWRITE=true/);
 });
 
+test("perf seed creates editable HEX tag colors", async () => {
+  const source = await import("node:fs/promises").then((fs) => fs.readFile("scripts/perf-seed.mjs", "utf8"));
+
+  assert.match(source, /function hslToHex/);
+  assert.match(source, /color: tagColor\(index, TAG_COUNT\)/);
+  assert.doesNotMatch(source, /color: `hsl/);
+});
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
