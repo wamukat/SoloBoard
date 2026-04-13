@@ -92,6 +92,11 @@ test("kanban lane create rename delete and reorder are wired", async ({ page }) 
     const movingTicket = await movingTicketResponse.json();
     await page.reload();
     await expect(page.getByRole("button", { name: "Move between lanes" })).toBeVisible();
+    await page.waitForFunction(({ targetLaneId, ticketId }) =>
+      Boolean(
+        document.querySelector(`.ticket-card[data-ticket-id="${ticketId}"]`) &&
+        document.querySelector(`.ticket-list[data-lane-id="${targetLaneId}"]`),
+      ), { targetLaneId: deltaLane.id, ticketId: movingTicket.id });
     await Promise.all([
       page.waitForResponse((response) => response.url().endsWith(`/api/boards/${boardPayload.board.id}/tickets/reorder`) && response.status() === 200),
       page.evaluate(({ targetLaneId, ticketId }) => {
