@@ -728,3 +728,45 @@ test("lane filter does not leak from List view into Kanban view", async ({ page 
     await app.close();
   }
 });
+
+test("kanban horizontal overflow stays inside the lane board", async ({ page }) => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+  });
+  const port = await getFreePort();
+  await app.listen({ host: "127.0.0.1", port });
+
+  try {
+    await page.setViewportSize({ width: 1000, height: 700 });
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const boardResponse = await page.request.post(`${baseUrl}/api/boards`, {
+      data: { name: "Wide Kanban", laneNames: ["Backlog", "Ready", "Doing", "Review", "Waiting", "Done"] },
+    });
+    expect(boardResponse.status()).toBe(201);
+    const boardPayload = await boardResponse.json();
+
+    await page.goto(`${baseUrl}/boards/${boardPayload.board.id}`);
+    await expect(page.locator("#board-title")).toHaveText("Wide Kanban");
+
+    const overflow = await page.evaluate(() => {
+      const root = document.documentElement;
+      const laneBoard = document.querySelector("#lane-board");
+      if (!(laneBoard instanceof HTMLElement)) {
+        throw new Error("Missing lane board");
+      }
+      return {
+        pageClientWidth: root.clientWidth,
+        pageScrollWidth: root.scrollWidth,
+        laneClientWidth: laneBoard.clientWidth,
+        laneScrollWidth: laneBoard.scrollWidth,
+      };
+    });
+
+    expect(overflow.pageScrollWidth).toBeLessThanOrEqual(overflow.pageClientWidth);
+    expect(overflow.laneScrollWidth).toBeGreaterThan(overflow.laneClientWidth);
+  } finally {
+    await page.close();
+    await app.close();
+  }
+});

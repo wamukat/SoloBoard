@@ -126,13 +126,13 @@ button:hover,
 .shell {
   position: relative;
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 280px minmax(0, 1fr);
   min-height: 100vh;
   transition: grid-template-columns 140ms ease;
 }
 
 .shell.sidebar-collapsed {
-  grid-template-columns: 0 1fr;
+  grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .sidebar {
@@ -485,6 +485,7 @@ button:hover,
 .main {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   padding: 1rem;
   overflow: hidden;
 }
