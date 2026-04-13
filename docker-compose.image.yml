@@ -2,7 +2,7 @@ name: soloboard
 
 services:
   soloboard:
-    image: ghcr.io/wamukat/soloboard:v0.9.5
+    image: ghcr.io/wamukat/soloboard:v0.9.6
     environment:
       HOST: 0.0.0.0
       PORT: 3000
