@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { calculateVisibleWindow, takeRoundRobinBatch } from "../public/app-board-utils.js";
+import { getListTickets, renderListActions } from "../public/app-board-list.js";
 import { formatTagLabel, renderTag, tagTextColor } from "../public/app-tags.js";
 import { renderTicketTagChip } from "../public/app-ticket-tag-picker.js";
 
@@ -28,6 +29,49 @@ test("takeRoundRobinBatch distributes work across lanes", () => {
   ]);
   assert.equal(result.nextLaneIndex, 2);
   assert.deepEqual(queues.map((queue) => queue.index), [2, 2, 1]);
+});
+
+test("getListTickets keeps parent tickets before children and sorts by priority", () => {
+  const tickets = [
+    { id: 4, priority: 3, parentTicketId: 99 },
+    { id: 2, priority: 2, parentTicketId: 1 },
+    { id: 1, priority: 5, parentTicketId: null },
+    { id: 3, priority: 1, parentTicketId: null },
+  ];
+
+  const entries = getListTickets(tickets);
+
+  assert.deepEqual(
+    entries.map((entry) => [entry.ticket.id, entry.indent]),
+    [
+      [3, 0],
+      [4, 0],
+      [1, 0],
+      [2, 1],
+    ],
+  );
+});
+
+test("renderListActions exposes only relevant bulk actions", () => {
+  const tickets = [
+    { id: 1, isResolved: false, isArchived: false },
+    { id: 2, isResolved: true, isArchived: true },
+  ];
+
+  assert.match(renderListActions(tickets, []), /Select tickets to edit in bulk/);
+
+  const mixed = renderListActions(tickets, [1, 2]);
+  assert.match(mixed, /Mark Resolved/);
+  assert.match(mixed, /Reopen/);
+  assert.match(mixed, /Archive/);
+  assert.match(mixed, /Restore/);
+  assert.match(mixed, /Delete/);
+
+  const openOnly = renderListActions(tickets, [1]);
+  assert.match(openOnly, /Mark Resolved/);
+  assert.doesNotMatch(openOnly, /Reopen/);
+  assert.match(openOnly, /Archive/);
+  assert.doesNotMatch(openOnly, /Restore/);
 });
 
 test("tagTextColor selects readable foreground colors", () => {
