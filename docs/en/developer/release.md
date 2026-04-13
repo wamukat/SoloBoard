@@ -42,10 +42,12 @@ git branch --show-current
 Run local checks:
 
 ```bash
-pnpm build
-pnpm test
+pnpm check
+pnpm exec playwright test --project=chromium
 docker build -t soloboard:release-check .
 ```
+
+`pnpm check` runs OpenAPI lint, unit/API tests, TypeScript build, and GitHub Pages build. Run Playwright E2E for releases that change UI or UX behavior.
 
 Verify that version numbers match the release tag.
 
@@ -184,6 +186,50 @@ Release notes should include:
 - Backup note.
 - No-authentication warning.
 - Current platform support.
+
+Release notes template:
+
+````markdown
+## What's Changed
+
+- Describe the main user-facing changes.
+- Mention notable bug fixes.
+- Mention test or documentation updates when useful.
+
+## Docker Image
+
+Published image:
+
+```text
+ghcr.io/wamukat/soloboard:vX.Y.Z
+ghcr.io/wamukat/soloboard:X.Y.Z
+ghcr.io/wamukat/soloboard:latest
+```
+
+Run with Docker:
+
+```bash
+docker run --rm -d \
+  --name soloboard \
+  -p 3000:3000 \
+  -v soloboard-data:/app/data \
+  ghcr.io/wamukat/soloboard:vX.Y.Z
+```
+
+Run with Docker Compose:
+
+```bash
+docker compose -f docker-compose.image.yml up -d
+```
+
+Persistent data is stored at `/app/data/soloboard.sqlite`. Back up that SQLite file before upgrades. SoloBoard currently runs without built-in authentication, so expose it only on trusted networks or behind your own authentication layer.
+
+Platform support:
+
+```text
+linux/amd64
+```
+````
 
 ## Package Visibility
 

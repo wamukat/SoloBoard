@@ -749,22 +749,35 @@ test("kanban horizontal overflow stays inside the lane board", async ({ page }) 
     await page.goto(`${baseUrl}/boards/${boardPayload.board.id}`);
     await expect(page.locator("#board-title")).toHaveText("Wide Kanban");
 
-    const overflow = await page.evaluate(() => {
+    const readOverflow = async (selector: string) => page.evaluate((targetSelector) => {
       const root = document.documentElement;
-      const laneBoard = document.querySelector("#lane-board");
-      if (!(laneBoard instanceof HTMLElement)) {
-        throw new Error("Missing lane board");
+      const target = document.querySelector(targetSelector);
+      if (!(target instanceof HTMLElement)) {
+        throw new Error(`Missing overflow target: ${targetSelector}`);
       }
       return {
         pageClientWidth: root.clientWidth,
         pageScrollWidth: root.scrollWidth,
-        laneClientWidth: laneBoard.clientWidth,
-        laneScrollWidth: laneBoard.scrollWidth,
+        targetClientWidth: target.clientWidth,
+        targetScrollWidth: target.scrollWidth,
       };
-    });
+    }, selector);
 
+    const overflow = await readOverflow("#lane-board");
     expect(overflow.pageScrollWidth).toBeLessThanOrEqual(overflow.pageClientWidth);
-    expect(overflow.laneScrollWidth).toBeGreaterThan(overflow.laneClientWidth);
+    expect(overflow.targetScrollWidth).toBeGreaterThan(overflow.targetClientWidth);
+
+    await page.getByRole("button", { name: "List", exact: true }).click();
+    await expect(page.locator("#list-board")).toBeVisible();
+    const listOverflow = await readOverflow("#list-board");
+    expect(listOverflow.pageScrollWidth).toBeLessThanOrEqual(listOverflow.pageClientWidth);
+
+    await page.getByRole("button", { name: "Kanban", exact: true }).click();
+    await page.locator("#sidebar-toggle-button").click();
+    await expect(page.locator(".shell")).toHaveClass(/sidebar-collapsed/);
+    const collapsedOverflow = await readOverflow("#lane-board");
+    expect(collapsedOverflow.pageScrollWidth).toBeLessThanOrEqual(collapsedOverflow.pageClientWidth);
+    expect(collapsedOverflow.targetScrollWidth).toBeGreaterThan(collapsedOverflow.targetClientWidth);
   } finally {
     await page.close();
     await app.close();

@@ -42,10 +42,12 @@ git branch --show-current
 ローカルチェックを実行します。
 
 ```bash
-pnpm build
-pnpm test
+pnpm check
+pnpm exec playwright test --project=chromium
 docker build -t soloboard:release-check .
 ```
+
+`pnpm check` は OpenAPI lint、unit/API test、TypeScript build、GitHub Pages build をまとめて実行します。UI/UX を変更した release では、Playwright E2E も実行します。
 
 リリース番号が tag と一致していることを確認します。
 
@@ -184,6 +186,50 @@ gh release create vX.Y.Z \
 - Backup note
 - 認証なしの注意
 - 現在の platform support
+
+リリースノート雛形:
+
+````markdown
+## What's Changed
+
+- Describe the main user-facing changes.
+- Mention notable bug fixes.
+- Mention test or documentation updates when useful.
+
+## Docker Image
+
+Published image:
+
+```text
+ghcr.io/wamukat/soloboard:vX.Y.Z
+ghcr.io/wamukat/soloboard:X.Y.Z
+ghcr.io/wamukat/soloboard:latest
+```
+
+Run with Docker:
+
+```bash
+docker run --rm -d \
+  --name soloboard \
+  -p 3000:3000 \
+  -v soloboard-data:/app/data \
+  ghcr.io/wamukat/soloboard:vX.Y.Z
+```
+
+Run with Docker Compose:
+
+```bash
+docker compose -f docker-compose.image.yml up -d
+```
+
+Persistent data is stored at `/app/data/soloboard.sqlite`. Back up that SQLite file before upgrades. SoloBoard currently runs without built-in authentication, so expose it only on trusted networks or behind your own authentication layer.
+
+Platform support:
+
+```text
+linux/amd64
+```
+````
 
 ## パッケージ公開状態の確認
 
