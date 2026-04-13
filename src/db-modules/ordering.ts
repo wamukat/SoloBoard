@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-import type { Id } from "./types.js";
+import type { Id } from "../types.js";
 
 export function nextLanePosition(sqlite: Database.Database, boardId: Id): number {
   const row = sqlite

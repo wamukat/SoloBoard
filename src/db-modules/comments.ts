@@ -1,15 +1,15 @@
 import type Database from "better-sqlite3";
 
-import { mapActivityLog, mapComment } from "./db-mappers.js";
-import { addActivity as insertActivity } from "./db-ticket-writes.js";
-import { getCommentsForTicketIds } from "./db-ticket-loaders.js";
+import { mapActivityLog, mapComment } from "./mappers.js";
+import { addActivity as insertActivity } from "./ticket-writes.js";
+import { getCommentsForTicketIds } from "./ticket-loaders.js";
 import type {
   ActivityLogRow,
   ActivityLogView,
   CommentRow,
   CommentView,
   Id,
-} from "./types.js";
+} from "../types.js";
 
 export type CreateCommentInput = {
   ticketId: Id;

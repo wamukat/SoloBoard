@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-import type { Id, TicketRow } from "./types.js";
+import type { Id, TicketRow } from "../types.js";
 
 export type ListTicketsFilters = {
   laneId?: number;

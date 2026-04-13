@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-import { replaceTicketBlockers } from "./db-ticket-writes.js";
+import { replaceTicketBlockers } from "./ticket-writes.js";
 import type {
   BoardDetailView,
   BoardExport,
@@ -8,7 +8,7 @@ import type {
   Id,
   TagView,
   TicketView,
-} from "./types.js";
+} from "../types.js";
 
 type ImportBoardOps = {
   addComment(input: { ticketId: Id; bodyMarkdown: string }): CommentView;

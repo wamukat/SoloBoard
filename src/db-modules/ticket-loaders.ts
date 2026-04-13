@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-import { mapComment, mapRelation, mapTag } from "./db-mappers.js";
+import { mapComment, mapRelation, mapTag } from "./mappers.js";
 import type {
   CommentRow,
   CommentView,
@@ -9,7 +9,7 @@ import type {
   TagView,
   TicketBlockerView,
   TicketRelationView,
-} from "./types.js";
+} from "../types.js";
 
 type TicketRelationRow = {
   ticket_id: Id;

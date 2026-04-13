@@ -1,4 +1,4 @@
-import { renderMarkdown } from "./markdown.js";
+import { renderMarkdown } from "../markdown.js";
 import type {
   ActivityLogRow,
   ActivityLogView,
@@ -16,7 +16,7 @@ import type {
   TicketRow,
   TicketSummaryView,
   TicketView,
-} from "./types.js";
+} from "../types.js";
 
 export function mapBoard(row: BoardRow): BoardView {
   return {

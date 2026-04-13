@@ -21,7 +21,7 @@ import {
   type CreateBoardInput,
   type CreateLaneInput,
   type CreateTagInput,
-} from "./db-board.js";
+} from "./db-modules/board.js";
 import {
   addComment,
   deleteComment,
@@ -30,7 +30,7 @@ import {
   updateComment,
   type CreateCommentInput,
   type UpdateCommentInput,
-} from "./db-comments.js";
+} from "./db-modules/comments.js";
 import {
   bulkArchiveTickets as bulkArchiveTicketRecords,
   bulkResolveTickets as bulkResolveTicketRecords,
@@ -46,16 +46,16 @@ import {
   type CreateTicketInput,
   type ReorderTicketInput,
   type UpdateTicketInput,
-} from "./db-ticket-mutations.js";
-import { importBoardPayload, toBoardExport } from "./db-board-transfer.js";
-import { migrate } from "./db-migration.js";
-import { type ListTicketsFilters } from "./db-ticket-queries.js";
+} from "./db-modules/ticket-mutations.js";
+import { importBoardPayload, toBoardExport } from "./db-modules/board-transfer.js";
+import { migrate } from "./db-modules/migration.js";
+import { type ListTicketsFilters } from "./db-modules/ticket-queries.js";
 import {
   getTicket as getTicketRecord,
   getTicketRelations as getTicketRelationRecords,
   listTickets as listTicketRecords,
   listTicketSummaries as listTicketSummaryRecords,
-} from "./db-ticket-read-model.js";
+} from "./db-modules/ticket-read-model.js";
 import {
   type ActivityLogView,
   type BoardDetailView,

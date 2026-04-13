@@ -1,29 +1,29 @@
 import type Database from "better-sqlite3";
 
-import { listLanes } from "./db-board.js";
-import { sanitizePriority } from "./db-mappers.js";
+import { listLanes } from "./board.js";
+import { sanitizePriority } from "./mappers.js";
 import {
   nextTicketPosition,
   normalizeVisibleAndArchivedTicketPositions,
-} from "./db-ordering.js";
-import { getTicketRowsForBoard } from "./db-ticket-queries.js";
+} from "./ordering.js";
+import { getTicketRowsForBoard } from "./ticket-queries.js";
 import {
   getTicket,
   listTickets,
   listTicketSummariesByIds,
-} from "./db-ticket-read-model.js";
+} from "./ticket-read-model.js";
 import {
   addActivity as insertActivity,
   replaceTicketBlockers,
   replaceTicketTags,
   validateParentTicket,
-} from "./db-ticket-writes.js";
+} from "./ticket-writes.js";
 import type {
   Id,
   LaneRow,
   TicketSummaryView,
   TicketView,
-} from "./types.js";
+} from "../types.js";
 
 export type CreateTicketInput = {
   boardId: Id;

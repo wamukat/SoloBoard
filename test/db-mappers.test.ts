@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { mapActivityLog, mapComment, sanitizePriority } from "../src/db-mappers.js";
+import { mapActivityLog, mapComment, sanitizePriority } from "../src/db-modules/mappers.js";
 
 test("mapComment renders markdown without changing persisted markdown", () => {
   const comment = mapComment({

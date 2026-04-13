@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 
-import { getBoard } from "./db-board.js";
-import { mapTicket, mapTicketSummary } from "./db-mappers.js";
+import { getBoard } from "./board.js";
+import { mapTicket, mapTicketSummary } from "./mappers.js";
 import {
   getBlockedTicketsForTicketIds,
   getBlockerIdsForTicketIds,
@@ -10,19 +10,19 @@ import {
   getCommentsForTicketIds,
   getParentsForTicketIds,
   getTagsForTicketIds,
-} from "./db-ticket-loaders.js";
+} from "./ticket-loaders.js";
 import {
   getTicketRowsForBoard,
   listTicketRows,
   type ListTicketsFilters,
-} from "./db-ticket-queries.js";
+} from "./ticket-queries.js";
 import type {
   Id,
   TicketRelationsView,
   TicketRow,
   TicketSummaryView,
   TicketView,
-} from "./types.js";
+} from "../types.js";
 
 export function listTicketSummaries(
   sqlite: Database.Database,

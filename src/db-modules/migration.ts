@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-import { normalizeBoardPositions } from "./db-ordering.js";
+import { normalizeBoardPositions } from "./ordering.js";
 
 export function migrate(sqlite: Database.Database): void {
   sqlite.exec(`

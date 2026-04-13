@@ -1,12 +1,12 @@
 import type Database from "better-sqlite3";
 
-import { mapBoard, mapLane, mapTag } from "./db-mappers.js";
+import { mapBoard, mapLane, mapTag } from "./mappers.js";
 import {
   nextBoardPosition,
   nextLanePosition,
   normalizeBoardPositions,
   normalizeLanePositions,
-} from "./db-ordering.js";
+} from "./ordering.js";
 import type {
   BoardRow,
   BoardView,
@@ -15,7 +15,7 @@ import type {
   LaneView,
   TagRow,
   TagView,
-} from "./types.js";
+} from "../types.js";
 
 const DEFAULT_LANES = ["todo", "doing", "done"];
 const DEFAULT_TAG_COLOR = "#6b7280";
