@@ -29,6 +29,12 @@ import {
   getTagsForTicketIds,
 } from "./db-ticket-loaders.js";
 import {
+  addActivity,
+  replaceTicketBlockers,
+  replaceTicketTags,
+  validateParentTicket,
+} from "./db-ticket-writes.js";
+import {
   type ActivityLogRow,
   type ActivityLogView,
   type BoardDetailView,
@@ -406,7 +412,7 @@ export class KanbanDb {
         .run(
           input.boardId,
           input.laneId,
-          this.validateParentTicket(null, input.parentTicketId, input.boardId),
+          validateParentTicket(this.sqlite, null, input.parentTicketId, input.boardId),
           input.title,
           input.bodyMarkdown ?? "",
           input.isResolved ? 1 : 0,
@@ -417,8 +423,8 @@ export class KanbanDb {
           now,
         );
       const ticketId = Number(result.lastInsertRowid);
-      this.replaceTicketTags(ticketId, input.tagIds ?? []);
-      this.replaceTicketBlockers(ticketId, input.blockerIds ?? [], input.boardId);
+      replaceTicketTags(this.sqlite, ticketId, input.tagIds ?? []);
+      replaceTicketBlockers(this.sqlite, ticketId, input.blockerIds ?? [], input.boardId);
       this.addActivity(input.boardId, ticketId, "ticket_created", "Ticket created");
       this.touchBoard(input.boardId);
       return ticketId;
@@ -445,7 +451,8 @@ export class KanbanDb {
         .run(
           nextBoardId,
           nextLaneId,
-          this.validateParentTicket(
+          validateParentTicket(
+            this.sqlite,
             ticketId,
             input.parentTicketId !== undefined ? input.parentTicketId : current.parentTicketId,
             nextBoardId,
@@ -459,10 +466,10 @@ export class KanbanDb {
           ticketId,
         );
       if (input.tagIds) {
-        this.replaceTicketTags(ticketId, input.tagIds);
+        replaceTicketTags(this.sqlite, ticketId, input.tagIds);
       }
       if (input.blockerIds) {
-        this.replaceTicketBlockers(ticketId, input.blockerIds, nextBoardId);
+        replaceTicketBlockers(this.sqlite, ticketId, input.blockerIds, nextBoardId);
       }
       if (nextLaneId !== current.laneId) {
         this.sqlite
@@ -864,7 +871,8 @@ export class KanbanDb {
         this.sqlite
           .prepare("UPDATE tickets SET parent_ticket_id = ? WHERE id = ?")
           .run(ticket.parentTicketId == null ? null : createdTicketIds.get(ticket.parentTicketId) ?? null, ticketId);
-        this.replaceTicketBlockers(
+        replaceTicketBlockers(
+          this.sqlite,
           ticketId,
           (ticket.blockerIds ?? []).map((blockerId) => createdTicketIds.get(blockerId)).filter((value): value is number => typeof value === "number"),
           created.board.id,
@@ -977,33 +985,6 @@ export class KanbanDb {
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
 
-  private validateParentTicket(ticketId: Id | null, parentTicketId: Id | null | undefined, boardId: Id): Id | null {
-    if (parentTicketId == null) {
-      return null;
-    }
-    if (ticketId != null && parentTicketId === ticketId) {
-      throw new Error("Ticket cannot be its own parent");
-    }
-    const parent = this.sqlite
-      .prepare("SELECT id, board_id, parent_ticket_id FROM tickets WHERE id = ?")
-      .get(parentTicketId) as { id: Id; board_id: Id; parent_ticket_id: Id | null } | undefined;
-    if (!parent || parent.board_id !== boardId) {
-      throw new Error("Parent ticket does not belong to board");
-    }
-    if (parent.parent_ticket_id != null) {
-      throw new Error("Child ticket cannot be a parent");
-    }
-    if (ticketId != null) {
-      const childCount = this.sqlite
-        .prepare("SELECT COUNT(*) AS count FROM tickets WHERE parent_ticket_id = ?")
-        .get(ticketId) as { count: number };
-      if (childCount.count > 0) {
-        throw new Error("Ticket with children cannot become a child");
-      }
-    }
-    return parentTicketId;
-  }
-
   private addActivity(
     boardId: Id,
     ticketId: Id,
@@ -1011,58 +992,7 @@ export class KanbanDb {
     message: string,
     details: Record<string, unknown> = {},
   ): void {
-    this.sqlite
-      .prepare(
-        `
-        INSERT INTO activity_logs (board_id, ticket_id, subject_ticket_id, action, message, details_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        `,
-      )
-      .run(boardId, ticketId, ticketId, action, message, JSON.stringify(details), this.now());
-  }
-
-  private replaceTicketTags(ticketId: Id, tagIds: Id[]): void {
-    this.sqlite.prepare("DELETE FROM ticket_tags WHERE ticket_id = ?").run(ticketId);
-    const insert = this.sqlite.prepare("INSERT INTO ticket_tags (ticket_id, tag_id) VALUES (?, ?)");
-    tagIds.forEach((tagId) => insert.run(ticketId, tagId));
-  }
-
-  private replaceTicketBlockers(ticketId: Id, blockerIds: Id[], boardId: Id): void {
-    const nextBlockerIds = [...new Set(blockerIds.filter((blockerId) => blockerId !== ticketId))];
-    if (nextBlockerIds.length > 0) {
-      const placeholders = nextBlockerIds.map(() => "?").join(", ");
-      const validIds = this.sqlite
-        .prepare(
-          `
-          SELECT id
-          FROM tickets
-          WHERE board_id = ?
-            AND id IN (${placeholders})
-          `,
-        )
-        .all(boardId, ...nextBlockerIds) as Array<{ id: Id }>;
-      if (validIds.length !== nextBlockerIds.length) {
-        throw new Error("Blocker ticket does not belong to board");
-      }
-      const reverseLinks = this.sqlite
-        .prepare(
-          `
-          SELECT ticket_id
-          FROM ticket_blockers
-          WHERE blocker_ticket_id = ?
-            AND ticket_id IN (${placeholders})
-          `,
-        )
-        .all(ticketId, ...nextBlockerIds) as Array<{ ticket_id: Id }>;
-      if (reverseLinks.length > 0) {
-        throw new Error("Blocker would create a deadlock");
-      }
-    }
-    this.sqlite.prepare("DELETE FROM ticket_blockers WHERE ticket_id = ?").run(ticketId);
-    const insert = this.sqlite.prepare(
-      "INSERT INTO ticket_blockers (ticket_id, blocker_ticket_id) VALUES (?, ?)",
-    );
-    nextBlockerIds.forEach((blockerId) => insert.run(ticketId, blockerId));
+    addActivity(this.sqlite, { boardId, ticketId, action, message, details, createdAt: this.now() });
   }
 
 }
