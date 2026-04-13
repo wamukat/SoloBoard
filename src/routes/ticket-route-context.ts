@@ -1,0 +1,55 @@
+import type { KanbanDb } from "../db.js";
+import type { Id, TicketRelationView, TicketSummaryView, TicketView } from "../types.js";
+
+export type TicketMutationBody = {
+  laneId?: number;
+  parentTicketId?: number | null;
+  title?: string;
+  bodyMarkdown?: string;
+  isResolved?: boolean;
+  isCompleted?: boolean;
+  isArchived?: boolean;
+  priority?: number;
+  tagIds?: number[];
+  blockerIds?: number[] | null;
+};
+
+export type TicketTransitionBody = {
+  laneName?: string;
+  isResolved?: boolean;
+  isCompleted?: boolean;
+};
+
+export type TicketRoutesSchemas = {
+  activityLogsResponseSchema: unknown;
+  bulkArchiveTicketsBodySchema: unknown;
+  bulkResolveTicketsBodySchema: unknown;
+  bulkTransitionTicketsBodySchema: unknown;
+  commentViewSchema: unknown;
+  commentsResponseSchema: unknown;
+  errorSchema: unknown;
+  idParamsSchema(key: string): unknown;
+  reorderTicketsBodySchema: unknown;
+  ticketCommentBodySchema: unknown;
+  ticketCommentUpdateBodySchema: unknown;
+  ticketCreateBodySchema: unknown;
+  ticketListQuerySchema: unknown;
+  ticketRelationsSchema: unknown;
+  ticketSchema: unknown;
+  ticketsResponseSchema: unknown;
+  ticketTransitionBodySchema: unknown;
+  ticketUpdateBodySchema: unknown;
+};
+
+export type RegisterTicketRoutesContext = {
+  db: KanbanDb;
+  getIdParam(params: unknown, key: string): Id;
+  parseBooleanQuery(value: string | undefined): boolean | undefined;
+  parseTicketMutationBody(body: TicketMutationBody): TicketMutationBody;
+  publishBoardEvent(boardId: Id, event?: string): void;
+  resolveResolvedFlag(body: { isResolved?: boolean; isCompleted?: boolean } | undefined): boolean | undefined;
+  schemas: TicketRoutesSchemas;
+  serializeTicket(ticket: TicketView): unknown;
+  serializeTicketRelation(relation: TicketRelationView): unknown;
+  serializeTicketSummaries(tickets: TicketSummaryView[]): unknown;
+};
