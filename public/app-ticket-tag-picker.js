@@ -19,7 +19,7 @@ export function createTicketTagPicker(ctx) {
     const selectedTags = state.boardDetail.tags.filter((tag) => state.editorTagIds.includes(tag.id));
     elements.ticketTagSummary.innerHTML = selectedTags.length
       ? selectedTags.map((tag) => renderTicketTagChip(tag, ctx.escapeHtml)).join("")
-      : '<span class="ticket-tag-placeholder">Add tags</span>';
+      : "";
 
     if (state.boardDetail.tags.length === 0) {
       elements.ticketTagOptions.innerHTML = '<div class="tag-picker-empty">No tags</div>';

@@ -19,6 +19,8 @@ test("ticket editor creates updates archives restores and deletes tickets", asyn
     await expect(page.locator("#editor-form")).toBeVisible();
     await expect(page.locator("#ticket-resolved-row")).toBeHidden();
     await expect(page.locator("#ticket-priority")).toHaveValue("2");
+    await expect(page.locator("#ticket-tag-summary .ticket-tag-placeholder")).toHaveCount(0);
+    await expect(page.locator("#ticket-tag-search")).toHaveAttribute("placeholder", "Add tags");
 
     await page.locator("#ticket-title").fill("Created from editor");
     await page.locator("#ticket-body").fill("Created with **Markdown**");
