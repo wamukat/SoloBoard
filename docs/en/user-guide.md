@@ -12,11 +12,15 @@ Type a board name and press Enter to create your first board.
 
 ![Initial empty board](../assets/user-guide/00-initial-empty-board.png)
 
+![Inline board create](../assets/user-guide/02-inline-board-create.png)
+
 ## 2. Learn The Workspace
 
 After creating a board, the normal workspace appears.
 
 Choose a board in the left sidebar and move tickets in the central Kanban area. You can switch between `Kanban` and `List` in the sidebar.
+
+The current UI keeps cards, lanes, filters, and dialogs aligned to the same design rules. Quiet borders, subtle depth, and actions that appear only when needed help keep the board focused on the work itself.
 
 ![Kanban overview](../assets/user-guide/01-kanban-overview.png)
 
@@ -26,7 +30,7 @@ Use the `+` at the bottom of the board to add a lane. Like board creation, enter
 
 A simple workflow such as `Backlog`, `In Progress`, `Review`, and `Done` is enough to start. You can add or rename lanes later.
 
-Rename and delete actions are available from each lane's action menu. Infrequent actions stay slightly deeper so the board remains quiet while reading it.
+Rename and delete actions are available from each lane's action menu. Lane rename happens inline on the lane header instead of opening a dialog. Infrequent actions stay slightly deeper so the board remains quiet while reading it.
 
 ![Inline lane create](../assets/user-guide/03-inline-lane-create.png)
 
@@ -82,7 +86,7 @@ Mark finished work Resolved. Move it to a Done lane when that also fits your wor
 
 Archive tickets you no longer need to see every day. Archived tickets are hidden from the normal board so you can focus on current work.
 
-Open `Status` to the right of the tag filter and add `Archived` when you need to include archived tickets. You can add `Resolved` from the same menu.
+Open `Status >` to the right of the tag filter and add `Archived` when you need to include archived tickets. You can add `Resolved` from the same menu. Use the `x` icon inside the filter to clear that filter.
 
 ![Archived filter](../assets/user-guide/11-archived-filter.png)
 
@@ -124,6 +128,14 @@ Board rename, Export / Import, and Delete are available from the gear at the bot
 They stay hidden during everyday work so you can focus on boards and tickets. Open them only when backing up or moving data.
 
 ![Board settings](../assets/user-guide/12-board-settings.png)
+
+## 13. Dark Mode
+
+SoloBoard does not have an in-app Light / Dark toggle.
+
+Instead, it follows the OS or browser color-scheme setting. When your system is in dark mode, SoloBoard automatically uses the dark theme. In light environments it stays light; in dark environments it follows the device setting.
+
+![Dark mode](../assets/user-guide/13-dark-mode.png)
 
 ## Recommended Workflow
 

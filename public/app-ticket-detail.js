@@ -35,9 +35,9 @@ export function createTicketDetailModule(ctx) {
       elements.archiveTicketButton.hidden = true;
       return;
     }
-    elements.editorHeaderState.hidden = state.dialogMode !== "view" || !ticket.isResolved;
-    elements.editorHeaderState.textContent = ticket.isResolved ? "Resolved" : "";
-    elements.editorHeaderState.className = "ticket-state-pill ticket-state-pill-resolved";
+    const statePills = renderHeaderStatePills(ticket);
+    elements.editorHeaderState.hidden = state.dialogMode !== "view" || !statePills;
+    elements.editorHeaderState.innerHTML = statePills;
     elements.editorHeaderId.textContent = `#${ticket.id}`;
     elements.editorHeaderTitle.textContent = ticket.title;
     elements.editorHeaderTitle.hidden = state.dialogMode !== "view";
@@ -55,13 +55,23 @@ export function createTicketDetailModule(ctx) {
     if (!ticket) {
       return "";
     }
-    const archived = ticket.isArchived ? '<span class="ticket-archived-label">Archived</span>' : "";
     const tags = ticket.tags
       .map((tag) => renderTag(tag, ctx.escapeHtml))
       .join("");
     return `
-      <div class="ticket-meta-row">${archived}${tags}</div>
+      <div class="ticket-meta-row">${tags}</div>
     `;
+  }
+
+  function renderHeaderStatePills(ticket) {
+    const pills = [];
+    if (ticket.isResolved) {
+      pills.push(`<span class="ticket-state-pill ticket-state-pill-resolved">${icon("check")}<span>Resolved</span></span>`);
+    }
+    if (ticket.isArchived) {
+      pills.push(`<span class="ticket-state-pill ticket-state-pill-archived">${icon("archive")}<span>Archived</span></span>`);
+    }
+    return pills.join("");
   }
 
   function syncTicketRelations(ticket) {

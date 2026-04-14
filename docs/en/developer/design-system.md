@@ -36,7 +36,9 @@ SoloBoard is not a loud SaaS dashboard. It is a work surface that should stay co
 
 ### Dark Mode
 
-If dark mode is implemented, keep it neutral and ink-like instead of leaning into dark blue or purple.
+Dark mode is applied automatically through `prefers-color-scheme: dark`. SoloBoard does not provide an in-app Light / Dark toggle; it follows the OS or browser appearance setting.
+
+Keep the palette neutral and ink-like instead of leaning into dark blue or purple.
 
 | Role | Token | Value |
 | --- | --- | --- |
@@ -150,9 +152,9 @@ Use borders for structure. Use shadows only for genuinely elevated elements.
 
 ### Buttons And Actions
 
-- Primary: Create and Save actions. Background `--accent`, foreground `#ffffff`.
+- Primary: Create and Save actions. Background `--accent`, foreground `--on-accent`.
 - Secondary: Standard actions. Background `--surface-1`, border `--border-soft`.
-- Danger: Delete uses `--danger` as foreground. Final Delete in confirmation dialogs uses `--danger` as background and `#ffffff` as foreground.
+- Danger: Delete uses `--danger` as foreground. Final Delete in confirmation dialogs uses `--danger` as background and `--on-accent` as foreground.
 - Icon button: 16px icon, transparent by default, quiet background on hover.
 - Put infrequent edit/delete actions behind progressive disclosure.
 
@@ -168,10 +170,7 @@ Use borders for structure. Use shadows only for genuinely elevated elements.
 
 Use toast only for result notifications.
 
-```css
---toast-success-bg: rgba(31, 111, 95, 0.96);
---toast-error-bg: rgba(196, 61, 61, 0.96);
-```
+Toast colors should use `--accent` / `--danger` through `color-mix()` instead of adding local fixed colors.
 
 Feedback placement:
 
@@ -199,5 +198,4 @@ Feedback placement:
 2. Move buttons, inputs, tags, ticket cards, dialogs, and toasts to token-based styling.
 3. Normalize kanban column and sidebar surface/border treatment.
 4. Verify kanban, list, dialogs, tags, and empty states with E2E and agent-browser.
-5. Treat dark mode as a separate implementation after token readiness.
-
+5. Keep dark mode tied to `prefers-color-scheme` and avoid fixed colors outside the token system in both Light and Dark.

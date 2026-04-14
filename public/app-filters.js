@@ -16,6 +16,8 @@ export function createFiltersModule(ctx, options) {
     elements.viewModeButtons.forEach((button) => {
       button.classList.toggle("active", button.dataset.viewMode === state.viewMode);
     });
+    elements.shell.classList.toggle("view-kanban", state.viewMode === "kanban");
+    elements.shell.classList.toggle("view-list", state.viewMode === "list");
     elements.laneBoard.hidden = state.viewMode !== "kanban";
     elements.listBoard.hidden = state.viewMode !== "list";
     elements.laneFilter.hidden = state.viewMode !== "list";

@@ -35,7 +35,7 @@ test("ticket editor creates updates archives restores and deletes tickets", asyn
     const createdTicket = await createdTicketResponse.json();
     await expect(page.locator("#editor-dialog")).not.toHaveJSProperty("open", true);
     await expect(page.locator("#toast")).toHaveText("Ticket created");
-    await expect(page.locator("#toast")).toHaveCSS("background-color", "rgba(31, 111, 95, 0.96)");
+    await expect(page.locator("#toast")).toHaveAttribute("data-kind", "info");
     await expect(page.locator(".lane", { has: page.locator(".lane-title", { hasText: "Review" }) })).toContainText("Created from editor");
 
     await page.getByRole("button", { name: "Created from editor" }).click();
@@ -56,6 +56,7 @@ test("ticket editor creates updates archives restores and deletes tickets", asyn
     await expect(page.locator("#ticket-view")).toBeVisible();
     await expect(page.locator("#editor-header-title")).toHaveText("Updated from editor");
     await expect(page.locator("#editor-header-state")).toContainText("Resolved");
+    await expect(page.locator("#editor-header-state .ticket-state-pill-resolved use[href='/icons.svg#check']")).toHaveCount(1);
     await expect(page.locator("#editor-header-priority")).toHaveText("High");
 
     await page.locator("#header-edit-button").click();
@@ -73,6 +74,11 @@ test("ticket editor creates updates archives restores and deletes tickets", asyn
     await page.locator("#status-filter [data-status-filter='resolved']").click();
     await page.locator("#status-filter [data-status-filter='archived']").click();
     await page.getByRole("button", { name: "Updated from editor" }).click();
+    await expect(page.locator("#editor-header-state .ticket-state-pill")).toHaveText(["Resolved", "Archived"]);
+    await expect(page.locator("#editor-header-state .ticket-state-pill-resolved use[href='/icons.svg#check']")).toHaveCount(1);
+    await expect(page.locator("#editor-header-state .ticket-state-pill-archived use[href='/icons.svg#archive']")).toHaveCount(1);
+    await expect(page.locator(".editor-dialog-heading-top > *")).toHaveText([`#${createdTicket.id}`, "ResolvedArchived", "High"]);
+    await expect(page.locator("#ticket-view-meta .ticket-archived-label")).toHaveCount(0);
     await page.locator("#header-edit-button").click();
     await expect(page.locator("#archive-ticket-button")).toContainText("Restore");
     const restoreResponse = page.waitForResponse(

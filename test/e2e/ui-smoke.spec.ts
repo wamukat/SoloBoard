@@ -139,14 +139,13 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await page.locator("#status-filter [data-status-filter='resolved']").click();
     await expect(page.locator(".ticket-card")).toHaveCount(4);
     const openSidebarSearchOffset = await page.locator(".toolbar-search").evaluate((search) => {
-      const toolbar = document.querySelector(".toolbar");
-      if (!toolbar) {
+      const firstLane = document.querySelector(".lane:not(.lane-create-column)");
+      if (!firstLane) {
         return 0;
       }
-      return search.getBoundingClientRect().left - toolbar.getBoundingClientRect().left;
+      return Math.abs(search.getBoundingClientRect().left - firstLane.getBoundingClientRect().left);
     });
-    expect(openSidebarSearchOffset).toBeGreaterThan(12);
-    expect(openSidebarSearchOffset).toBeLessThan(20);
+    expect(openSidebarSearchOffset).toBeLessThan(2);
     await expect(page.locator("#sidebar #view-mode-toggle")).toBeVisible();
     await expect(page.locator(".toolbar #view-mode-toggle")).toHaveCount(0);
     await expect(page.locator("#sidebar #view-mode-toggle use[href='/icons.svg#columns-3']")).toHaveCount(1);
@@ -210,8 +209,15 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     const emptyListActionsHeight = await page.locator(".list-actions").first().evaluate((element) => element.getBoundingClientRect().height);
     await page.getByRole("button", { name: "Smoke ticket" }).locator("..").locator("[data-list-ticket-id]").check();
     await expect(page.locator(".list-actions").first()).toContainText("1 selected");
-    const selectedListActionsHeight = await page.locator(".list-actions").first().evaluate((element) => element.getBoundingClientRect().height);
-    expect(Math.abs(selectedListActionsHeight - emptyListActionsHeight)).toBeLessThan(1);
+    const selectedListActionsMetrics = await page.locator(".list-actions").first().evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      flexWrap: getComputedStyle(element).flexWrap,
+    }));
+    expect(Math.abs(selectedListActionsMetrics.height - emptyListActionsHeight)).toBeLessThan(1);
+    expect(selectedListActionsMetrics.flexWrap).toBe("nowrap");
+    expect(selectedListActionsMetrics.scrollWidth - selectedListActionsMetrics.clientWidth).toBeLessThan(1);
     await expect(page.locator("[data-bulk-resolve='true'] use[href='/icons.svg#check']").first()).toHaveCount(1);
     await expect(page.locator("[data-bulk-archive='true'] use[href='/icons.svg#archive']").first()).toHaveCount(1);
     await expect(page.locator("[data-bulk-delete='true'] use[href='/icons.svg#trash-2']").first()).toHaveCount(1);
