@@ -90,20 +90,6 @@
   outline: none;
 }
 
-.sidebar-board-name-error {
-  font-size: var(--font-size-label);
-}
-
-.sidebar-board-name-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.45rem;
-}
-
-.sidebar-board-name-actions button {
-  padding: 0.42rem 0.62rem;
-  font-size: var(--font-size-label);
-}
 
 .sidebar-board-actions button,
 .sidebar-board-actions .import-button {
@@ -137,6 +123,6 @@
 }
 
 .sidebar-board-actions .icon {
-  width: 0.86rem;
-  height: 0.86rem;
+  width: var(--icon-size-meta);
+  height: var(--icon-size-meta);
 }

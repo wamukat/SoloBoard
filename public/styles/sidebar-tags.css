@@ -12,6 +12,22 @@
   min-width: 0;
 }
 
+.sidebar-tag-create-row input {
+  width: 100%;
+  min-height: 2.2rem;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-control);
+  background: var(--control-bg);
+  color: var(--text);
+  padding: 0.55rem 0.65rem;
+  outline: none;
+}
+
+.sidebar-tag-create-row input:focus {
+  border-color: var(--control-focus-border);
+  box-shadow: var(--control-focus-ring);
+}
+
 .sidebar-tag-badge {
   display: inline-flex;
   align-items: center;
@@ -49,8 +65,8 @@
 
 .sidebar-tag-badge .icon {
   flex: 0 0 auto;
-  width: 0.82rem;
-  height: 0.82rem;
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
   opacity: 0.8;
 }
 
@@ -84,13 +100,6 @@
   box-shadow: var(--shadow-card-hover);
 }
 
-.sidebar-tag-form-label {
-  color: var(--muted);
-  font-size: var(--font-size-label);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
 
 .sidebar-tag-form input[type="text"] {
   width: 100%;
@@ -178,8 +187,8 @@
 }
 
 .sidebar-tag-form-actions .icon {
-  width: 0.86rem;
-  height: 0.86rem;
+  width: var(--icon-size-meta);
+  height: var(--icon-size-meta);
 }
 
 .sidebar-tag-action-spacer {

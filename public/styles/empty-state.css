@@ -20,8 +20,8 @@
 }
 
 .empty-state-icon .icon {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: var(--icon-size-empty);
+  height: var(--icon-size-empty);
 }
 
 .empty-state strong {

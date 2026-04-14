@@ -41,6 +41,6 @@
 }
 
 .list-actions .list-action-button .icon {
-  width: 0.85rem;
-  height: 0.85rem;
+  width: var(--icon-size-meta);
+  height: var(--icon-size-meta);
 }

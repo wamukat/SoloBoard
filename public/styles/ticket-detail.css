@@ -137,8 +137,8 @@
 }
 
 .ticket-state-pill .icon {
-  width: 0.82rem;
-  height: 0.82rem;
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
 }
 
 .ticket-state-pill-open {

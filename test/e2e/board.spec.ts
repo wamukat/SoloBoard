@@ -91,6 +91,7 @@ test("sidebar board settings actions are wired", async ({ page }) => {
 
     await page.locator("[data-board-rename-start]").click();
     await expect(page.locator("[data-board-rename-input]")).toBeFocused();
+    await expect(page.locator("[data-board-rename-form] button")).toHaveCount(0);
     await page.locator("[data-board-rename-input]").fill("Operations Renamed");
     const renameResponse = page.waitForResponse(
       (response) =>
@@ -177,12 +178,37 @@ test("board rename inline edit cancels with Escape and delete dialog closes with
     await page.locator("[data-board-rename-start]").click();
     await expect(page.locator("[data-board-rename-input]")).toBeFocused();
     await page.locator("[data-board-rename-input]").fill("Canceled Board Name");
+    await page.keyboard.press("Tab");
+    await expect(page.locator("[data-board-rename-input]")).toHaveCount(0);
+    await expect(page.locator("#board-title")).toHaveText("Dialog Close Board");
+
+    await page.locator("[data-board-rename-start]").click();
+    await expect(page.locator("[data-board-rename-input]")).toBeFocused();
+    await page.locator("[data-board-rename-input]").fill("Canceled Board Name");
     await page.keyboard.press("Escape");
     await expect(page.locator("[data-board-rename-input]")).toHaveCount(0);
     await expect(page.locator("#board-title")).toHaveText("Dialog Close Board");
 
     await page.locator("#delete-board-button").click();
     await expect(page.locator("#ux-dialog")).toHaveJSProperty("open", true);
+    const dialogBeforeDrag = await page.locator("#ux-dialog").boundingBox();
+    const dialogHeader = await page.locator("#ux-form .editor-header").boundingBox();
+    expect(dialogBeforeDrag).not.toBeNull();
+    expect(dialogHeader).not.toBeNull();
+    await page.mouse.move(
+      (dialogHeader?.x ?? 0) + (dialogHeader?.width ?? 0) / 2,
+      (dialogHeader?.y ?? 0) + (dialogHeader?.height ?? 0) / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      (dialogHeader?.x ?? 0) + (dialogHeader?.width ?? 0) / 2 + 80,
+      (dialogHeader?.y ?? 0) + (dialogHeader?.height ?? 0) / 2 + 40,
+    );
+    await page.mouse.up();
+    const dialogAfterDrag = await page.locator("#ux-dialog").boundingBox();
+    expect(dialogAfterDrag).not.toBeNull();
+    expect((dialogAfterDrag?.x ?? 0) - (dialogBeforeDrag?.x ?? 0)).toBeGreaterThan(40);
+    expect((dialogAfterDrag?.y ?? 0) - (dialogBeforeDrag?.y ?? 0)).toBeGreaterThan(20);
     await page.mouse.click(8, 8);
     await expect(page.locator("#ux-dialog")).not.toHaveJSProperty("open", true);
     await expect(page.locator("#board-title")).toHaveText("Dialog Close Board");

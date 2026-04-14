@@ -1,3 +1,4 @@
+import { createInlineTextForm } from "./app-inline-text-form.js";
 import { icon } from "./icons.js";
 
 export function createBoardSettingsModule(ctx) {
@@ -13,20 +14,18 @@ export function createBoardSettingsModule(ctx) {
       return;
     }
     if (state.isRenamingBoard) {
-      elements.boardRenameInlineHost.innerHTML = `
-        <form class="sidebar-board-name-form" data-board-rename-form>
-          <input id="board-rename-input" data-board-rename-input type="text" value="${ctx.escapeHtml(board.name)}" aria-label="Board name" autocomplete="off" required />
-          <div class="sidebar-board-name-error danger" data-board-rename-error ${state.boardRenameError ? "" : "hidden"}>${ctx.escapeHtml(state.boardRenameError)}</div>
-          <div class="sidebar-board-name-actions">
-            <button type="button" class="ghost" data-board-rename-cancel>Cancel</button>
-            <button type="submit" class="primary-action">Save</button>
-          </div>
-        </form>
-      `;
-      bindBoardNameForm();
+      const form = createInlineTextForm({
+        className: "sidebar-board-name-form",
+        html: `<input id="board-rename-input" data-board-rename-input type="text" value="${ctx.escapeHtml(board.name)}" aria-label="Board name" autocomplete="off" />`,
+        inputSelector: "[data-board-rename-input]",
+        onSubmit: submitBoardRename,
+        onCancel: cancelBoardRename,
+        cancelOnFocusOut: "always",
+      });
+      form.dataset.boardRenameForm = "";
+      elements.boardRenameInlineHost.replaceChildren(form);
       requestAnimationFrame(() => {
         const input = elements.boardRenameInlineHost.querySelector("[data-board-rename-input]");
-        input?.focus();
         input?.select();
       });
       return;
@@ -45,19 +44,6 @@ export function createBoardSettingsModule(ctx) {
     elements.boardRenameInlineHost.querySelector("[data-board-rename-start]")?.addEventListener("click", startBoardRename);
   }
 
-  function bindBoardNameForm() {
-    const form = elements.boardRenameInlineHost.querySelector("[data-board-rename-form]");
-    form?.addEventListener("submit", submitBoardRename);
-    form?.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape") {
-        return;
-      }
-      event.preventDefault();
-      cancelBoardRename();
-    });
-    form?.querySelector("[data-board-rename-cancel]")?.addEventListener("click", cancelBoardRename);
-  }
-
   function startBoardRename() {
     if (!state.boardDetail) {
       return;
@@ -73,16 +59,13 @@ export function createBoardSettingsModule(ctx) {
     renderBoardNameControl();
   }
 
-  async function submitBoardRename(event) {
-    event.preventDefault();
+  async function submitBoardRename(input) {
     if (!state.boardDetail) {
       return;
     }
-    const input = elements.boardRenameInlineHost.querySelector("[data-board-rename-input]");
     const name = input?.value.trim() ?? "";
     if (!name) {
-      state.boardRenameError = "Board name is required";
-      renderBoardNameControl();
+      cancelBoardRename();
       return;
     }
     if (name === state.boardDetail.board.name) {

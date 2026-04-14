@@ -61,8 +61,8 @@
 
 .tag-picker-swatch {
   display: inline-flex;
-  width: 0.85rem;
-  height: 0.85rem;
+  width: var(--icon-size-meta);
+  height: var(--icon-size-meta);
   border-radius: var(--radius-pill);
   border: 1px solid var(--border-soft);
 }
@@ -85,7 +85,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1rem;
+  width: var(--icon-size-default);
   color: var(--accent);
   font-weight: var(--font-weight-semibold);
 }

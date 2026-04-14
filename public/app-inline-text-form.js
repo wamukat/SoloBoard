@@ -1,4 +1,11 @@
-export function createInlineTextForm({ className, html, inputSelector, onSubmit, onCancel }) {
+export function createInlineTextForm({
+  className,
+  html,
+  inputSelector,
+  onSubmit,
+  onCancel,
+  cancelOnFocusOut = "empty",
+}) {
   const form = document.createElement("form");
   form.className = className;
   form.innerHTML = html;
@@ -17,7 +24,10 @@ export function createInlineTextForm({ className, html, inputSelector, onSubmit,
   form.addEventListener("focusout", () => {
     window.setTimeout(() => {
       const input = form.querySelector(inputSelector);
-      if (!form.contains(document.activeElement) && !input?.value.trim()) {
+      if (
+        !form.contains(document.activeElement)
+        && (cancelOnFocusOut === "always" || !input?.value.trim())
+      ) {
         onCancel();
       }
     });

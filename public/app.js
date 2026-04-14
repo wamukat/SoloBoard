@@ -50,6 +50,8 @@ const state = {
   childQuery: "",
   editorDialogPosition: null,
   editorDialogDrag: null,
+  uxDialogPosition: null,
+  uxDialogDrag: null,
 };
 
 const elements = {
@@ -140,6 +142,7 @@ const elements = {
   cancelEditButton: document.querySelector("#cancel-edit-button"),
   uxDialog: document.querySelector("#ux-dialog"),
   uxForm: document.querySelector("#ux-form"),
+  uxHeader: document.querySelector("#ux-form .editor-header"),
   uxTitle: document.querySelector("#ux-title"),
   uxMessage: document.querySelector("#ux-message"),
   uxFields: document.querySelector("#ux-fields"),
@@ -202,6 +205,7 @@ function bindEvents() {
   elements.commentsTabButton.addEventListener("click", () => setDetailTab("comments"));
   elements.activityTabButton.addEventListener("click", () => setDetailTab("activity"));
   elements.editorHeader.addEventListener("pointerdown", handleEditorHeaderPointerDown);
+  elements.uxHeader.addEventListener("pointerdown", handleUxHeaderPointerDown);
   elements.uxForm.addEventListener("submit", handleUxSubmit);
   elements.deleteTicketButton.addEventListener("click", deleteTicket);
   elements.archiveTicketButton.addEventListener("click", toggleTicketArchive);
@@ -221,6 +225,8 @@ function bindEvents() {
   elements.uxCancelButton.addEventListener("click", () => finishUxDialog(null));
   elements.uxDismissButton.addEventListener("click", () => finishUxDialog(null));
   elements.uxDialog.addEventListener("close", () => {
+    state.uxDialogDrag = null;
+    elements.uxDialog.classList.remove("dragging");
     finishUxDialog(null);
     syncDialogScrollLock();
   });
@@ -236,6 +242,8 @@ function bindEvents() {
   });
   window.addEventListener("pointermove", handleEditorHeaderPointerMove);
   window.addEventListener("pointerup", handleEditorHeaderPointerUp);
+  window.addEventListener("pointermove", handleUxHeaderPointerMove);
+  window.addEventListener("pointerup", handleUxHeaderPointerUp);
   document.addEventListener("click", handleDocumentClick);
   document.addEventListener("keydown", handleDocumentKeydown);
 }
@@ -320,6 +328,71 @@ function handleEditorHeaderPointerUp(event) {
   }
   state.editorDialogDrag = null;
   elements.editorDialog.classList.remove("dragging");
+}
+
+function clampUxDialogPosition(left, top) {
+  const rect = elements.uxDialog.getBoundingClientRect();
+  return {
+    left: Math.min(Math.max(12, left), Math.max(12, window.innerWidth - rect.width - 12)),
+    top: Math.min(Math.max(12, top), Math.max(12, window.innerHeight - rect.height - 12)),
+  };
+}
+
+function applyUxDialogPosition(position) {
+  if (!position) {
+    return;
+  }
+  const clamped = clampUxDialogPosition(position.left, position.top);
+  state.uxDialogPosition = clamped;
+  elements.uxDialog.style.left = `${clamped.left}px`;
+  elements.uxDialog.style.top = `${clamped.top}px`;
+}
+
+function prepareUxDialogPosition() {
+  const rect = elements.uxDialog.getBoundingClientRect();
+  applyUxDialogPosition({
+    left: (window.innerWidth - rect.width) / 2,
+    top: Math.max(48, (window.innerHeight - rect.height) / 2),
+  });
+}
+
+function handleUxHeaderPointerDown(event) {
+  if (!elements.uxDialog.open) {
+    return;
+  }
+  if (event.button !== 0 || event.target.closest("button")) {
+    return;
+  }
+  const rect = elements.uxDialog.getBoundingClientRect();
+  state.uxDialogDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    left: rect.left,
+    top: rect.top,
+  };
+  elements.uxDialog.classList.add("dragging");
+  event.preventDefault();
+}
+
+function handleUxHeaderPointerMove(event) {
+  const drag = state.uxDialogDrag;
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return;
+  }
+  applyUxDialogPosition({
+    left: drag.left + (event.clientX - drag.startX),
+    top: drag.top + (event.clientY - drag.startY),
+  });
+}
+
+function handleUxHeaderPointerUp(event) {
+  const drag = state.uxDialogDrag;
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return;
+  }
+  state.uxDialogDrag = null;
+  elements.uxDialog.classList.remove("dragging");
 }
 
 function handleDialogBackdropClick(event) {
@@ -591,6 +664,7 @@ const uxModule = createUxModule({
   state,
   elements,
   syncDialogScrollLock,
+  prepareUxDialogPosition,
   escapeHtml,
 });
 

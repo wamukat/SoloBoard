@@ -64,8 +64,8 @@
   position: absolute;
   top: 0.15rem;
   left: 0.15rem;
-  width: 0.82rem;
-  height: 0.82rem;
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
   border-radius: var(--radius-pill);
   background: var(--control-knob);
   box-shadow: var(--shadow-card);

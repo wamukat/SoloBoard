@@ -1,4 +1,5 @@
 import { tagBackgroundStyle, tagToneClass } from "./app-tags.js";
+import { createInlineTextForm } from "./app-inline-text-form.js";
 import {
   bindUxColorFieldInteractions,
   getUxColorFieldValue,
@@ -54,22 +55,16 @@ export function createSidebarTagsModule(ctx) {
   }
 
   function createTagCreateRow() {
-    const row = document.createElement("div");
-    row.className = "sidebar-tag-row";
-    row.innerHTML = `
-      <form class="sidebar-tag-form" data-sidebar-tag-create-form>
-        <label class="sidebar-tag-form-label" for="sidebar-tag-create-input">New tag</label>
-        <input id="sidebar-tag-create-input" data-sidebar-tag-name type="text" placeholder="Tag name" autocomplete="off" required />
-        ${renderTagError()}
-        <div class="sidebar-tag-form-actions">
-          <button type="button" class="ghost" data-sidebar-tag-cancel>Cancel</button>
-          <button type="submit" class="primary-action">Create</button>
-        </div>
-      </form>
-    `;
-    bindTagForm(row, submitTagCreate, cancelTagEdit);
-    requestAnimationFrame(() => row.querySelector("[data-sidebar-tag-name]")?.focus());
-    return row;
+    const form = createInlineTextForm({
+      className: "sidebar-tag-row sidebar-tag-create-row",
+      html: '<input id="sidebar-tag-create-input" data-sidebar-tag-name type="text" placeholder="Tag name" aria-label="Tag name" autocomplete="off" />',
+      inputSelector: "[data-sidebar-tag-name]",
+      onSubmit: submitTagCreate,
+      onCancel: cancelTagEdit,
+      cancelOnFocusOut: "always",
+    });
+    form.dataset.sidebarTagCreateForm = "";
+    return form;
   }
 
   function createTagEditForm(tag) {
@@ -122,6 +117,17 @@ export function createSidebarTagsModule(ctx) {
       renderSidebarTags();
     });
     form.querySelector("[data-sidebar-tag-delete-confirm]")?.addEventListener("click", () => deleteTag(tag.id));
+    form.addEventListener("focusout", () => {
+      window.setTimeout(() => {
+        if (
+          state.editingSidebarTagId === tag.id
+          && state.confirmingSidebarTagDeleteId !== tag.id
+          && !form.contains(document.activeElement)
+        ) {
+          cancelTagEdit();
+        }
+      });
+    });
     requestAnimationFrame(() => {
       if (isConfirmingDelete) {
         return;
@@ -184,12 +190,10 @@ export function createSidebarTagsModule(ctx) {
     renderSidebarTags();
   }
 
-  async function submitTagCreate(event) {
-    event.preventDefault();
-    const name = event.currentTarget.querySelector("[data-sidebar-tag-name]")?.value.trim() ?? "";
+  async function submitTagCreate(input) {
+    const name = input?.value.trim() ?? "";
     if (!name) {
-      state.sidebarTagError = "Tag name is required";
-      renderSidebarTags();
+      cancelTagEdit();
       return;
     }
     await ctx.sendJson(`/api/boards/${state.activeBoardId}/tags`, {

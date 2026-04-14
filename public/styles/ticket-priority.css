@@ -20,8 +20,8 @@
 }
 
 .ticket-priority-badge .icon {
-  width: 0.82rem;
-  height: 0.82rem;
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
 }
 
 .ticket-priority-icon {
@@ -29,7 +29,7 @@
   align-items: center;
   justify-content: center;
   width: 1.2rem;
-  height: 1rem;
+  height: var(--icon-size-default);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--surface-2) 72%, transparent);
@@ -37,8 +37,8 @@
 }
 
 .ticket-priority-icon .icon {
-  width: 0.8rem;
-  height: 0.8rem;
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
 }
 
 .ticket-priority-high {

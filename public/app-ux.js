@@ -36,6 +36,7 @@ export function createUxModule(ctx) {
       elements.uxError.hidden = true;
       elements.uxFields.innerHTML = "";
       elements.uxDialog.showModal();
+      ctx.prepareUxDialogPosition?.();
       ctx.syncDialogScrollLock?.();
     });
   }

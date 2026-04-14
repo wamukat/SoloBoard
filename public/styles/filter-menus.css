@@ -76,8 +76,8 @@
 }
 
 .filter-menu-edge-toggle .icon {
-  width: 0.95rem;
-  height: 0.95rem;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
 }
 
 .filter-menu-toggle:hover {
@@ -108,8 +108,8 @@
 }
 
 .filter-clear-button .icon {
-  width: 0.85rem;
-  height: 0.85rem;
+  width: var(--icon-size-meta);
+  height: var(--icon-size-meta);
 }
 
 .filter-clear-button:hover {
@@ -154,8 +154,8 @@
 }
 
 .filter-menu-options button .icon {
-  width: 0.9rem;
-  height: 0.9rem;
+  width: var(--icon-size-meta);
+  height: var(--icon-size-meta);
 }
 
 .filter-menu-options button.active {

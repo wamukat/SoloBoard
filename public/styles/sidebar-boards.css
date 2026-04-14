@@ -6,9 +6,9 @@
 .board-add-button {
   position: relative;
   margin-top: 0.6rem;
-  width: 2rem;
-  min-width: 2rem;
-  height: 2rem;
+  width: var(--control-size-icon);
+  min-width: var(--control-size-icon);
+  height: var(--control-size-icon);
   justify-content: center;
 }
 

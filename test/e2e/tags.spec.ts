@@ -21,7 +21,16 @@ test("sidebar tag create and edit stay inline", async ({ page }) => {
     await page.goto(`${baseUrl}/boards/${boardPayload.board.id}`);
     await page.locator("#new-sidebar-tag-button").click();
     await expect(page.locator("[data-sidebar-tag-create-form]")).toBeVisible();
+    await expect(page.locator("[data-sidebar-tag-create-form]")).not.toContainText("New tag");
+    await expect(page.locator("[data-sidebar-tag-create-form] button")).toHaveCount(0);
     await expect(page.locator("#ux-dialog")).not.toHaveJSProperty("open", true);
+    await page.locator("[data-sidebar-tag-name]").fill("draft-tag");
+    await page.keyboard.press("Tab");
+    await expect(page.locator("[data-sidebar-tag-create-form]")).toHaveCount(0);
+    await expect(page.locator("#sidebar-tag-list")).not.toContainText("draft-tag");
+
+    await page.locator("#new-sidebar-tag-button").click();
+    await expect(page.locator("[data-sidebar-tag-create-form]")).toBeVisible();
     await page.locator("[data-sidebar-tag-name]").fill("inline-tag");
     const createResponse = page.waitForResponse(
       (response) =>
@@ -53,6 +62,16 @@ test("sidebar tag create and edit stay inline", async ({ page }) => {
     });
     expect(Math.abs(colorInputWidths.switchCell - colorInputWidths.hexInput)).toBeLessThan(2);
     expect(Math.abs(colorInputWidths.colorCell - colorInputWidths.switchCell * 2 / 3)).toBeLessThan(2);
+    await page.locator(".sidebar-tag-form [data-field-id='color']").fill("#336699");
+    await page.locator("#board-settings-toggle-button").click();
+    await expect(page.locator("[data-sidebar-tag-edit-form]")).toHaveCount(0);
+    await expect(page.locator("#sidebar-tag-list .sidebar-tag-badge", { hasText: "inline-tag" })).toBeVisible();
+    await expect(page.locator("#sidebar-tag-list .sidebar-tag-badge", { hasText: "inline-tag-renamed" })).toHaveCount(0);
+
+    await page.locator("#sidebar-tag-list .sidebar-tag-badge", { hasText: "inline-tag" }).click();
+    await expect(page.locator("[data-sidebar-tag-edit-form]")).toBeVisible();
+    await page.locator("[data-sidebar-tag-name]").fill("inline-tag-renamed");
+    await page.locator(".sidebar-tag-form .ux-color-enable-switch").click();
     await page.locator(".sidebar-tag-form [data-field-id='color']").fill("#336699");
     const updateResponse = page.waitForResponse(
       (response) =>

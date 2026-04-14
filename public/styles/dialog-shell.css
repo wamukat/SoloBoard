@@ -1,5 +1,7 @@
 .ux-dialog {
+  position: fixed;
   width: min(420px, calc(100vw - var(--space-5) - var(--space-5)));
+  margin: 0;
   border: 1px solid color-mix(in srgb, var(--text-muted) 16%, transparent);
   border-radius: var(--radius-surface);
   padding: 0;
@@ -114,6 +116,10 @@
 }
 
 .editor-dialog.dragging {
+  box-shadow: var(--shadow-dialog), var(--drag-ring);
+}
+
+.ux-dialog.dragging {
   box-shadow: var(--shadow-dialog), var(--drag-ring);
 }
 

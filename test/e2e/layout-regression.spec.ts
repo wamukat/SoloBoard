@@ -247,6 +247,7 @@ test("core typography follows the design system scale", async ({ page }) => {
         cardId: ".ticket-card .ticket-id",
         tag: ".ticket-card .tag",
         button: "button",
+        icon: ".icon",
       };
 
       return Object.fromEntries(
@@ -262,6 +263,8 @@ test("core typography follows the design system scale", async ({ page }) => {
               fontSize: styles.fontSize,
               fontWeight: styles.fontWeight,
               lineHeight: styles.lineHeight,
+              width: styles.width,
+              height: styles.height,
             },
           ];
         }),
@@ -282,6 +285,39 @@ test("core typography follows the design system scale", async ({ page }) => {
     expect(typography.laneCount.fontSize).toBe("11px");
     expect(typography.cardId.fontSize).toBe("11px");
     expect(typography.tag.fontSize).toBe("12px");
+    expect(typography.icon.width).toBe("16px");
+    expect(typography.icon.height).toBe("16px");
+  } finally {
+    await close();
+  }
+});
+
+test("toast uses the shared elevated surface shape", async ({ page }) => {
+  const { baseUrl, close } = await startTestApp(page);
+
+  try {
+    const boardPayload = await createBoard(page.request, baseUrl, {
+      name: "Toast Visuals",
+      laneNames: ["todo"],
+    });
+
+    await page.goto(`${baseUrl}/boards/${boardPayload.board.id}`);
+    await page.locator(".add-ticket-button").first().click();
+    await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
+    await page.locator("#ticket-title").fill("Toast visual ticket");
+    await page.locator("#save-ticket-button").click();
+    await expect(page.locator("#toast")).toHaveText("Ticket created");
+
+    const toastStyles = await page.locator("#toast").evaluate((toast) => {
+      const styles = getComputedStyle(toast);
+      return {
+        borderRadius: styles.borderRadius,
+        boxShadow: styles.boxShadow,
+      };
+    });
+
+    expect(toastStyles.borderRadius).toBe("8px");
+    expect(toastStyles.boxShadow).not.toBe("none");
   } finally {
     await close();
   }
