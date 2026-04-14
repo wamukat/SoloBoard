@@ -295,6 +295,36 @@ test("editor form focus and detail header badges use the shared visual language"
     await expect(
       page.locator("#editor-header-priority .ticket-priority-badge"),
     ).toHaveClass(/ticket-priority-high/);
+
+    const detailTitleOffset = await page.evaluate(() => {
+      const dialog = document.querySelector("#editor-dialog");
+      const title = document.querySelector("#editor-header-title");
+      if (!dialog || !title) {
+        throw new Error("Ticket detail title fixture is missing");
+      }
+      return (
+        title.getBoundingClientRect().top -
+        dialog.getBoundingClientRect().top
+      );
+    });
+    expect(detailTitleOffset).toBeGreaterThanOrEqual(31);
+
+    await page.locator("#header-edit-button").click();
+    await expect(page.locator("#editor-form")).toBeVisible();
+    const editTitleOffset = await page.evaluate(() => {
+      const dialog = document.querySelector("#editor-dialog");
+      const title = document.querySelector("#ticket-title");
+      if (!dialog || !title) {
+        throw new Error("Ticket editor title fixture is missing");
+      }
+      return (
+        title.getBoundingClientRect().top -
+        dialog.getBoundingClientRect().top
+      );
+    });
+    expect(Math.abs(editTitleOffset - detailTitleOffset)).toBeLessThanOrEqual(
+      8,
+    );
   } finally {
     await close();
   }
