@@ -154,7 +154,7 @@ Instead, it follows the OS or browser color-scheme setting. When your system is 
 docker run --rm \
   -p 3000:3000 \
   -v soloboard-data:/app/data \
-  ghcr.io/wamukat/soloboard:v0.9.9
+  ghcr.io/wamukat/soloboard:v0.9.10
 ```
 
 Open:
