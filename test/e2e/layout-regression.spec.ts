@@ -234,6 +234,7 @@ test("core typography follows the design system scale", async ({ page }) => {
 
     await page.goto(`${baseUrl}/boards/${boardPayload.board.id}`);
     await expect(page.locator(".ticket-card")).toBeVisible();
+    await expect(page.locator(".ticket-card .ticket-link")).toBeVisible();
 
     const typography = await page.evaluate(() => {
       const selectors = {
@@ -387,7 +388,7 @@ test("editor form focus and detail header badges use the shared visual language"
     await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
     await expect(page.locator("#editor-header-id")).toHaveText(`#${ticket.id}`);
     await expect(
-      page.locator("#editor-header-state .ticket-state-pill"),
+      page.locator("#editor-header-state .ticket-state-pill > span"),
     ).toHaveText(["Resolved", "Archived"]);
     await expect(
       page.locator(

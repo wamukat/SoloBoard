@@ -143,7 +143,7 @@ It follows the OS or browser color-scheme setting. When your system is in dark m
 docker run --rm \
   -p 3000:3000 \
   -v soloboard-data:/app/data \
-  ghcr.io/wamukat/soloboard:v0.9.10
+  ghcr.io/wamukat/soloboard:v0.9.11
 ```
 
 Open:

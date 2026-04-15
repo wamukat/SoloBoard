@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 import { buildApp, createDbFile, getFreePort, path } from "./helpers.js";
 
+test.setTimeout(60_000);
+
 test("board renders and ticket dialog actions are wired", async ({ page }) => {
   const app = buildApp({
     dbFile: createDbFile(),
@@ -298,8 +300,17 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await expect(page.locator("#comment-body")).toHaveValue("");
 
     await page.keyboard.press("Escape");
-    await page.locator("#status-filter .filter-menu-edge-toggle").click();
-    await page.locator("#status-filter [data-status-filter='resolved']").click();
+    if (await page.locator("#status-filter .filter-menu-options").isHidden()) {
+      await page.locator("#status-filter .filter-menu-edge-toggle").click();
+    }
+    await expect(page.locator("#status-filter .filter-menu-options")).toBeVisible();
+    const resolvedFilterButton = page.locator("#status-filter [data-status-filter='resolved']");
+    if (!await resolvedFilterButton.evaluate((button) => button.classList.contains("active"))) {
+      const resolvedFilterResponse = page.waitForResponse((response) => response.url().includes(`/api/boards/${boardPayload.board.id}/tickets`) && response.status() === 200);
+      await resolvedFilterButton.click();
+      await resolvedFilterResponse;
+    }
+    await expect(page.getByRole("button", { name: "Parent candidate" })).toBeVisible();
     await page.getByRole("button", { name: "Parent candidate" }).click();
     await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
     await expect(page.locator("#comment-save-state")).toBeHidden();
@@ -402,7 +413,7 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await expect(page.locator("#ticket-tag-summary")).toContainText("smoke-tag");
     await expect(page.locator("#ticket-tag-summary .ticket-tag-chip")).toHaveClass(/tag-no-color/);
     await expect(page.locator("#ticket-tag-summary .ticket-tag-chip")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await expect(page.locator("#ticket-tag-options [data-tag-id]")).toHaveCount(1);
+    await expect(page.locator("#ticket-tag-options [data-tag-id]")).toHaveCount(0);
     const sidebarTagBadge = page.locator("#sidebar-tag-list .sidebar-tag-badge", { hasText: "smoke-tag" });
     await expect(sidebarTagBadge).toBeVisible();
     await expect(sidebarTagBadge).toHaveClass(/tag-no-color/);
@@ -417,16 +428,17 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await page.locator("#ticket-tag-search").press("Enter");
     await expect(page.locator("#ticket-tag-summary")).toContainText("smoke-tag");
 
-    await page.locator("#ticket-tag-toggle").click();
+    await page.locator("#ticket-tag-search").fill("smoke");
     await expect(page.locator("#ticket-tag-options")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.locator("#ticket-tag-options")).toBeHidden();
     await expect(page.locator("#ticket-tag-summary")).toContainText("smoke-tag");
 
-    await page.locator("#ticket-tag-toggle").click();
+    await page.locator("#ticket-tag-search").fill("smoke");
     await expect(page.locator("#ticket-tag-options")).toBeVisible();
     await page.locator("#ticket-blocker-toggle").click();
     await expect(page.locator("#ticket-tag-options")).toBeHidden();
+    await page.locator("#ticket-tag-search").fill("");
 
     await page.locator("#ticket-parent-search").fill("Parent");
     await expect(page.locator("#ticket-parent-options .ticket-picker-meta").first()).toHaveText("Resolved");

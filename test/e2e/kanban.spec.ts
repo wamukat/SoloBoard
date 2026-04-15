@@ -123,6 +123,8 @@ test("kanban lane create rename delete and reorder are wired", async ({ page }) 
     await expect(page.locator(".lane", { has: page.getByRole("button", { name: "Move between lanes" }) }).locator(".lane-title")).toHaveText("Delta");
     await page.reload();
     await expect(page.locator(".lane", { has: page.getByRole("button", { name: "Move between lanes" }) }).locator(".lane-title")).toHaveText("Delta");
+    await expect(page.locator(`.ticket-card[data-ticket-id="${movingTicket.id}"]`)).toBeVisible();
+    await expect(page.locator(".lane-title").first()).toBeVisible();
 
     await page.evaluate(({ ticketId }) => {
       const laneBoard = document.querySelector("#lane-board");

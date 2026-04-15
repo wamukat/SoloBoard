@@ -66,6 +66,7 @@ export function createTicketRelationPicker(ctx) {
       ctx.removeTicket(Number(removeButton.getAttribute(ctx.removeAttr)));
       return;
     }
+    ctx.closePeerOptions();
     elements.search.focus();
   }
 

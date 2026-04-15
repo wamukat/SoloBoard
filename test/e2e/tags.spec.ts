@@ -128,6 +128,11 @@ test("long tag labels are constrained across ticket surfaces", async ({ page }) 
     });
     expect(tagResponse.status()).toBe(201);
     const tag = await tagResponse.json();
+    const candidateTagName = "candidate-long-tag-name-without-natural-breaks-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const candidateTagResponse = await page.request.post(`${baseUrl}/api/boards/${boardPayload.board.id}/tags`, {
+      data: { name: candidateTagName, color: "#1f6f5f" },
+    });
+    expect(candidateTagResponse.status()).toBe(201);
     const updateResponse = await page.request.patch(`${baseUrl}/api/tickets/${ticket.id}`, {
       data: {
         laneId: lane.id,
@@ -187,9 +192,11 @@ test("long tag labels are constrained across ticket surfaces", async ({ page }) 
     await expect(page.locator("#ticket-tag-summary .ticket-tag-chip")).toHaveAttribute("title", `Remove tag: ${longTagName}`);
     await expect(page.locator("#ticket-tag-summary .ticket-tag-chip")).toHaveAttribute("aria-label", `Remove tag: ${longTagName}`);
     await page.locator("#ticket-tag-toggle").click();
-    await expect(page.locator("#ticket-tag-options .tag-picker-text")).toHaveText("very-long-tag-name-withou...");
-    await expect(page.locator("#ticket-tag-options .tag-picker-item")).toHaveAttribute("title", longTagName);
-    await expect(page.locator("#ticket-tag-options .tag-picker-item")).toHaveAttribute("aria-label", longTagName);
+    await expect(page.locator("#ticket-tag-options .tag-picker-item")).toHaveCount(0);
+    await page.locator("#ticket-tag-search").fill("candidate");
+    await expect(page.locator("#ticket-tag-options .tag-picker-text")).toHaveText("candidate-long-tag-name-w...");
+    await expect(page.locator("#ticket-tag-options .tag-picker-item[data-tag-id]")).toHaveAttribute("title", candidateTagName);
+    await expect(page.locator("#ticket-tag-options .tag-picker-item[data-tag-id]")).toHaveAttribute("aria-label", candidateTagName);
   } finally {
     await page.close();
     await app.close();
@@ -232,6 +239,11 @@ test("long tag labels remain safe without Intl.Segmenter", async ({ page }) => {
     });
     expect(tagResponse.status()).toBe(201);
     const tag = await tagResponse.json();
+    const candidateTagName = "🇯🇵🇺🇸candidate-long-tag-name-without-natural-breaks-abcdefghijklmnopqrstuvwxyz";
+    const candidateTagResponse = await page.request.post(`${baseUrl}/api/boards/${boardPayload.board.id}/tags`, {
+      data: { name: candidateTagName, color: "#1f6f5f" },
+    });
+    expect(candidateTagResponse.status()).toBe(201);
     const updateResponse = await page.request.patch(`${baseUrl}/api/tickets/${ticket.id}`, {
       data: {
         laneId: lane.id,
@@ -291,9 +303,11 @@ test("long tag labels remain safe without Intl.Segmenter", async ({ page }) => {
     await expect(page.locator("#ticket-tag-summary .ticket-tag-chip")).toHaveAttribute("title", `Remove tag: ${longTagName}`);
     await expect(page.locator("#ticket-tag-summary .ticket-tag-chip")).toHaveAttribute("aria-label", `Remove tag: ${longTagName}`);
     await page.locator("#ticket-tag-toggle").click();
-    await expect(page.locator("#ticket-tag-options .tag-picker-text")).toHaveText("🇯🇵🇺🇸very-long-tag-name-with...");
-    await expect(page.locator("#ticket-tag-options .tag-picker-item")).toHaveAttribute("title", longTagName);
-    await expect(page.locator("#ticket-tag-options .tag-picker-item")).toHaveAttribute("aria-label", longTagName);
+    await expect(page.locator("#ticket-tag-options .tag-picker-item")).toHaveCount(0);
+    await page.locator("#ticket-tag-search").fill("candidate");
+    await expect(page.locator("#ticket-tag-options .tag-picker-text")).toHaveText("🇯🇵🇺🇸candidate-long-tag-name...");
+    await expect(page.locator("#ticket-tag-options .tag-picker-item[data-tag-id]")).toHaveAttribute("title", candidateTagName);
+    await expect(page.locator("#ticket-tag-options .tag-picker-item[data-tag-id]")).toHaveAttribute("aria-label", candidateTagName);
   } finally {
     await page.close();
     await app.close();

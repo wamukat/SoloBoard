@@ -85,6 +85,7 @@ export function createTicketTagPicker(ctx) {
       toggleTag(Number(removeButton.dataset.removeTagId));
       return;
     }
+    ctx.closePeerOptions();
     elements.ticketTagSearch.focus();
   }
 
