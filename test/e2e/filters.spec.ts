@@ -89,7 +89,13 @@ test("ticket filters combine results and active styling", async ({ page }) => {
       /is-filter-active/,
     );
     await expect(page.locator(".ticket-card")).toHaveCount(0);
-    await page.locator("#search-input").fill("");
+    await page.locator("#lane-board").click();
+    await expect(page.locator("#search-clear-button")).toBeVisible();
+    const clearSearchResponse = waitForTicketQuery({ resolved: "false" });
+    await page.locator("#search-clear-button").click();
+    await clearSearchResponse;
+    await expect(page.locator("#search-input")).toHaveValue("");
+    await expect(page.locator("#search-clear-button")).toBeHidden();
 
     const priorityLabelResponse = waitForTicketQuery({ resolved: "false" });
     await page.locator("#priority-filter .filter-menu-edge-toggle").click();
@@ -365,10 +371,12 @@ test("ticket filters are preserved per board during the session", async ({ page 
     await page.locator("#board-list").getByRole("button", { name: "Saved Filter B" }).click();
     await expect(page.locator("#search-input")).toHaveValue("Second");
     await expect(page.locator(".toolbar-search")).toHaveClass(/is-filter-active/);
+    await expect(page).toHaveURL(`${baseUrl}/boards/${secondBoard.board.id}`);
+    await expect(page.locator("#lane-filter")).toBeHidden();
     await expect(page.locator("#lane-filter")).toHaveValue(String(secondLane.id));
-    await expect(page.locator("#lane-filter")).toHaveClass(/is-filter-active/);
-    await expect(page.locator(".list-row")).toHaveCount(1);
-    await expect(page.locator("#list-board")).toContainText("Second board ticket");
+    await expect(page.locator("#lane-filter")).not.toHaveClass(/is-filter-active/);
+    await expect(page.locator(".ticket-card")).toHaveCount(1);
+    await expect(page.locator("#lane-board")).toContainText("Second board ticket");
   } finally {
     await page.close();
     await app.close();
@@ -425,6 +433,69 @@ test("last board view and filters restore from localStorage", async ({ page }) =
     await expect(page.locator("#lane-filter")).toHaveValue(String(reviewLane.id));
     await expect(page.locator(".list-row")).toHaveCount(1);
     await expect(page.locator("#list-board")).toContainText("Persisted review");
+  } finally {
+    await page.close();
+    await app.close();
+  }
+});
+
+test("board view mode is restored per board", async ({ page }) => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+  });
+  const port = await getFreePort();
+  await app.listen({ host: "127.0.0.1", port });
+
+  try {
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const firstBoardResponse = await page.request.post(`${baseUrl}/api/boards`, {
+      data: { name: "View Mode A", laneNames: ["todo"] },
+    });
+    expect(firstBoardResponse.status()).toBe(201);
+    const firstBoard = await firstBoardResponse.json();
+
+    const secondBoardResponse = await page.request.post(`${baseUrl}/api/boards`, {
+      data: { name: "View Mode B", laneNames: ["todo"] },
+    });
+    expect(secondBoardResponse.status()).toBe(201);
+    const secondBoard = await secondBoardResponse.json();
+
+    await page.goto(`${baseUrl}/boards/${firstBoard.board.id}`);
+    await expect(page.locator("#lane-board")).toBeVisible();
+    await expect(page.locator("#list-board")).toBeHidden();
+    await page.locator("#priority-filter .filter-menu-edge-toggle").click();
+    await expect(page.locator("#priority-filter")).toHaveClass(/is-expanded/);
+    await expect(page.locator("#status-filter")).not.toHaveClass(/is-expanded/);
+
+    await page.locator("#board-list").getByRole("button", { name: "View Mode B" }).click();
+    await expect(page.locator("#priority-filter")).not.toHaveClass(/is-expanded/);
+    await page.getByRole("button", { name: "List", exact: true }).click();
+    await page.locator("#status-filter .filter-menu-edge-toggle").click();
+    await expect(page).toHaveURL(`${baseUrl}/boards/${secondBoard.board.id}/list`);
+    await expect(page.locator("#list-board")).toBeVisible();
+    await expect(page.locator("#status-filter")).toHaveClass(/is-expanded/);
+    await expect(page.locator("#priority-filter")).not.toHaveClass(/is-expanded/);
+
+    await page.locator("#board-list").getByRole("button", { name: "View Mode A" }).click();
+    await expect(page).toHaveURL(`${baseUrl}/boards/${firstBoard.board.id}`);
+    await expect(page.locator("#lane-board")).toBeVisible();
+    await expect(page.locator("#list-board")).toBeHidden();
+    await expect(page.locator("#priority-filter")).toHaveClass(/is-expanded/);
+    await expect(page.locator("#status-filter")).not.toHaveClass(/is-expanded/);
+
+    await page.locator("#board-list").getByRole("button", { name: "View Mode B" }).click();
+    await expect(page).toHaveURL(`${baseUrl}/boards/${secondBoard.board.id}/list`);
+    await expect(page.locator("#list-board")).toBeVisible();
+    await expect(page.locator("#status-filter")).toHaveClass(/is-expanded/);
+    await expect(page.locator("#priority-filter")).not.toHaveClass(/is-expanded/);
+
+    await page.goto("about:blank");
+    await page.goto(baseUrl);
+    await expect(page).toHaveURL(`${baseUrl}/boards/${secondBoard.board.id}/list`);
+    await expect(page.locator("#board-title")).toHaveText("View Mode B");
+    await expect(page.locator("#status-filter")).toHaveClass(/is-expanded/);
+    await expect(page.locator("#priority-filter")).not.toHaveClass(/is-expanded/);
   } finally {
     await page.close();
     await app.close();

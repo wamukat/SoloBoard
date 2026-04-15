@@ -101,8 +101,12 @@ export function createBoardSettingsModule(ctx) {
       run: async () => {
         await ctx.api(`/api/boards/${board.id}`, { method: "DELETE" });
         delete state.filtersByBoardId[String(board.id)];
+        delete state.viewModeByBoardId[String(board.id)];
+        delete state.filterExpansionByBoardId[String(board.id)];
         state.activeBoardId = nextBoard?.id ?? null;
+        ctx.restoreBoardViewMode?.(state.activeBoardId);
         ctx.restoreBoardFilters?.(state.activeBoardId);
+        ctx.restoreBoardFilterExpansion?.(state.activeBoardId);
         await ctx.refreshBoards();
         ctx.syncBoardUrl();
       },
@@ -134,8 +138,12 @@ export function createBoardSettingsModule(ctx) {
       body: JSON.stringify(payload),
     });
     ctx.saveBoardFilters?.();
+    ctx.saveBoardFilterExpansion?.();
+    ctx.saveBoardViewMode?.();
     state.activeBoardId = imported.board.id;
+    ctx.restoreBoardViewMode?.(imported.board.id);
     ctx.restoreBoardFilters?.(imported.board.id);
+    ctx.restoreBoardFilterExpansion?.(imported.board.id);
     event.target.value = "";
     await ctx.refreshBoards();
     ctx.syncBoardUrl();

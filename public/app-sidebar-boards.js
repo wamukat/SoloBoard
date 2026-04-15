@@ -95,9 +95,13 @@ export function createSidebarBoardsModule(ctx, options) {
       body: { name },
     });
     ctx.saveBoardFilters?.();
+    ctx.saveBoardFilterExpansion?.();
+    ctx.saveBoardViewMode?.();
     state.isCreatingBoard = false;
     state.activeBoardId = created.board.id;
+    ctx.restoreBoardViewMode?.(created.board.id);
     ctx.restoreBoardFilters?.(created.board.id);
+    ctx.restoreBoardFilterExpansion?.(created.board.id);
     await ctx.refreshBoards();
     ctx.syncBoardUrl();
   }

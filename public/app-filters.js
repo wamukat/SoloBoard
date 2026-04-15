@@ -41,6 +41,23 @@ export function createFiltersModule(ctx, options) {
     applyBoardFilters(savedFilters ?? DEFAULT_BOARD_FILTERS);
   }
 
+  function saveBoardFilterExpansion(boardId = state.activeBoardId) {
+    if (!boardId) {
+      return;
+    }
+    state.filterExpansionByBoardId[String(boardId)] = {
+      status: isFilterExpanded(elements.statusFilterToggles),
+      priority: isFilterExpanded(elements.priorityFilterToggles),
+    };
+    options.persistUiPreferences?.();
+  }
+
+  function restoreBoardFilterExpansion(boardId = state.activeBoardId) {
+    const expansion = boardId ? state.filterExpansionByBoardId[String(boardId)] : null;
+    syncFilterExpansion(elements.statusFilter, elements.statusFilterToggles, elements.statusFilterOptions, expansion?.status === true);
+    syncFilterExpansion(elements.priorityFilter, elements.priorityFilterToggles, elements.priorityFilterOptions, expansion?.priority === true);
+  }
+
   function normalizeBoardFiltersForDetail(detail) {
     let nextFilters = state.filters;
     if (state.filters.lane && !detail.lanes.some((lane) => String(lane.id) === String(state.filters.lane))) {
@@ -62,6 +79,7 @@ export function createFiltersModule(ctx, options) {
 
   function syncFilterControls() {
     elements.searchInput.value = state.filters.q;
+    syncSearchClearButton();
     elements.laneFilter.value = state.filters.lane;
     syncStatusFilter();
     syncPriorityFilter();
@@ -134,7 +152,17 @@ export function createFiltersModule(ctx, options) {
     elements.searchInput.addEventListener("input", async (event) => {
       state.filters.q = event.target.value.trim();
       saveBoardFilters();
+      syncSearchClearButton();
       syncActiveFilterStyles();
+      await options.refreshBoardDetail();
+    });
+    elements.searchClearButton.addEventListener("click", async () => {
+      state.filters.q = "";
+      elements.searchInput.value = "";
+      saveBoardFilters();
+      syncSearchClearButton();
+      syncActiveFilterStyles();
+      elements.searchInput.focus();
       await options.refreshBoardDetail();
     });
     elements.laneFilter.addEventListener("change", async (event) => {
@@ -146,11 +174,13 @@ export function createFiltersModule(ctx, options) {
     elements.statusFilterToggles.forEach((toggle) => {
       toggle.addEventListener("click", () => {
         toggleFilterExpansion(elements.statusFilter, elements.statusFilterToggles, elements.statusFilterOptions);
+        saveBoardFilterExpansion();
       });
     });
     elements.priorityFilterToggles.forEach((toggle) => {
       toggle.addEventListener("click", () => {
         toggleFilterExpansion(elements.priorityFilter, elements.priorityFilterToggles, elements.priorityFilterOptions);
+        saveBoardFilterExpansion();
       });
     });
     elements.statusFilterButtons.forEach((button) => {
@@ -177,6 +207,7 @@ export function createFiltersModule(ctx, options) {
       syncStatusFilter();
       syncActiveFilterStyles();
       collapseFilter(elements.statusFilter, elements.statusFilterToggles, elements.statusFilterOptions);
+      saveBoardFilterExpansion();
       await options.refreshBoardDetail();
     });
     elements.priorityFilterButtons.forEach((button) => {
@@ -200,6 +231,7 @@ export function createFiltersModule(ctx, options) {
       syncPriorityFilter();
       syncActiveFilterStyles();
       collapseFilter(elements.priorityFilter, elements.priorityFilterToggles, elements.priorityFilterOptions);
+      saveBoardFilterExpansion();
       await options.refreshBoardDetail();
     });
     elements.tagFilter.addEventListener("change", async (event) => {
@@ -213,6 +245,7 @@ export function createFiltersModule(ctx, options) {
       saveBoardFilters();
       collapseFilter(elements.statusFilter, elements.statusFilterToggles, elements.statusFilterOptions);
       collapseFilter(elements.priorityFilter, elements.priorityFilterToggles, elements.priorityFilterOptions);
+      saveBoardFilterExpansion();
       await options.refreshBoardDetail();
     });
   }
@@ -234,26 +267,28 @@ export function createFiltersModule(ctx, options) {
   }
 
   function toggleFilterExpansion(filter, toggles, optionsElement) {
-    const expanded = toggles[0].getAttribute("aria-expanded") === "true";
-    if (expanded) {
-      collapseFilter(filter, toggles, optionsElement);
-      return;
-    }
-    toggles.forEach((toggle) => {
-      toggle.setAttribute("aria-expanded", "true");
-    });
-    filter.classList.add("is-expanded");
-    optionsElement.hidden = false;
-    filter.querySelector(".filter-menu-edge-toggle use")?.setAttribute("href", "/icons.svg#chevron-left");
+    syncFilterExpansion(filter, toggles, optionsElement, !isFilterExpanded(toggles));
   }
 
   function collapseFilter(filter, toggles, optionsElement) {
+    syncFilterExpansion(filter, toggles, optionsElement, false);
+  }
+
+  function isFilterExpanded(toggles) {
+    return toggles[0]?.getAttribute("aria-expanded") === "true";
+  }
+
+  function syncFilterExpansion(filter, toggles, optionsElement, expanded) {
     toggles.forEach((toggle) => {
-      toggle.setAttribute("aria-expanded", "false");
+      toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
     });
-    filter.classList.remove("is-expanded");
-    optionsElement.hidden = true;
-    filter.querySelector(".filter-menu-edge-toggle use")?.setAttribute("href", "/icons.svg#chevron-right");
+    filter.classList.toggle("is-expanded", expanded);
+    optionsElement.hidden = !expanded;
+    filter.querySelector(".filter-menu-edge-toggle use")?.setAttribute("href", expanded ? "/icons.svg#chevron-left" : "/icons.svg#chevron-right");
+  }
+
+  function syncSearchClearButton() {
+    elements.searchClearButton.hidden = state.filters.q === "";
   }
 
   function syncActiveFilterStyles() {
@@ -317,7 +352,9 @@ export function createFiltersModule(ctx, options) {
     hasActiveTicketFilters,
     normalizeBoardFiltersForDetail,
     resetBoardFilters,
+    restoreBoardFilterExpansion,
     restoreBoardFilters,
+    saveBoardFilterExpansion,
     saveBoardFilters,
     syncActiveFilterStyles,
     syncStatusFilter,

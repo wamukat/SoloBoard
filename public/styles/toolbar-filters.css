@@ -28,7 +28,7 @@
 
 .toolbar-search {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
@@ -86,6 +86,34 @@
 
 #search-input {
   width: 100%;
+}
+
+.search-clear-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  cursor: pointer;
+}
+
+.search-clear-button:hover {
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text);
+}
+
+.search-clear-button:focus-visible {
+  outline: none;
+  box-shadow: var(--control-focus-ring);
+}
+
+.search-clear-button[hidden] {
+  display: none;
 }
 
 #lane-filter {

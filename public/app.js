@@ -26,7 +26,7 @@ const state = {
   confirmingSidebarTagDeleteId: null,
   sidebarTagError: "",
   confirmingCommentDeleteId: null,
-  viewMode: storedPreferences.viewMode,
+  viewMode: "kanban",
   selectedListTicketIds: [],
   sidebarCollapsed: localStorage.getItem("soloboard:sidebar-collapsed") === "true",
   boardSettingsExpanded: false,
@@ -38,6 +38,8 @@ const state = {
     tag: "",
   },
   filtersByBoardId: storedPreferences.filtersByBoardId,
+  viewModeByBoardId: storedPreferences.viewModeByBoardId,
+  filterExpansionByBoardId: storedPreferences.filterExpansionByBoardId,
   editingTicketId: null,
   activeBoardDragId: null,
   activeLaneDragId: null,
@@ -64,17 +66,48 @@ function readUiPreferences() {
   try {
     const raw = localStorage.getItem(UI_PREFERENCES_KEY);
     if (!raw) {
-      return { activeBoardId: null, viewMode: "kanban", filtersByBoardId: {} };
+      return { activeBoardId: null, filtersByBoardId: {}, viewModeByBoardId: {}, filterExpansionByBoardId: {} };
     }
     const parsed = JSON.parse(raw);
+    const activeBoardId = Number.isInteger(parsed?.activeBoardId) && parsed.activeBoardId > 0 ? parsed.activeBoardId : null;
+    const viewModeByBoardId = normalizeStoredViewModesByBoard(parsed?.viewModeByBoardId);
+    if (activeBoardId && !viewModeByBoardId[String(activeBoardId)] && parsed?.viewMode === "list") {
+      viewModeByBoardId[String(activeBoardId)] = "list";
+    }
     return {
-      activeBoardId: Number.isInteger(parsed?.activeBoardId) && parsed.activeBoardId > 0 ? parsed.activeBoardId : null,
-      viewMode: parsed?.viewMode === "list" ? "list" : "kanban",
+      activeBoardId,
       filtersByBoardId: normalizeStoredFiltersByBoard(parsed?.filtersByBoardId),
+      viewModeByBoardId,
+      filterExpansionByBoardId: normalizeStoredFilterExpansionByBoard(parsed?.filterExpansionByBoardId),
     };
   } catch {
-    return { activeBoardId: null, viewMode: "kanban", filtersByBoardId: {} };
+    return { activeBoardId: null, filtersByBoardId: {}, viewModeByBoardId: {}, filterExpansionByBoardId: {} };
   }
+}
+
+function normalizeStoredViewModesByBoard(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([boardId, viewMode]) => Number.isInteger(Number(boardId)) && Number(boardId) > 0 && ["kanban", "list"].includes(viewMode))
+      .map(([boardId, viewMode]) => [String(boardId), viewMode]),
+  );
+}
+
+function normalizeStoredFilterExpansionByBoard(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([boardId, expansion]) => Number.isInteger(Number(boardId)) && Number(boardId) > 0 && expansion && typeof expansion === "object" && !Array.isArray(expansion))
+      .map(([boardId, expansion]) => [String(boardId), {
+        status: expansion.status === true,
+        priority: expansion.priority === true,
+      }]),
+  );
 }
 
 function normalizeStoredFiltersByBoard(value) {
@@ -108,8 +141,9 @@ function persistUiPreferences() {
   try {
     localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({
       activeBoardId: state.activeBoardId,
-      viewMode: state.viewMode,
+      viewModeByBoardId: state.viewModeByBoardId,
       filtersByBoardId: state.filtersByBoardId,
+      filterExpansionByBoardId: state.filterExpansionByBoardId,
     }));
   } catch (error) {
     console.warn("Failed to persist UI preferences", error);
@@ -121,6 +155,24 @@ function pruneUiPreferencesForBoards() {
   state.filtersByBoardId = Object.fromEntries(
     Object.entries(state.filtersByBoardId).filter(([boardId]) => boardIds.has(boardId)),
   );
+  state.viewModeByBoardId = Object.fromEntries(
+    Object.entries(state.viewModeByBoardId).filter(([boardId]) => boardIds.has(boardId)),
+  );
+  state.filterExpansionByBoardId = Object.fromEntries(
+    Object.entries(state.filterExpansionByBoardId).filter(([boardId]) => boardIds.has(boardId)),
+  );
+}
+
+function saveBoardViewMode(boardId = state.activeBoardId, viewMode = state.viewMode) {
+  if (!boardId) {
+    return;
+  }
+  state.viewModeByBoardId[String(boardId)] = viewMode === "list" ? "list" : "kanban";
+  persistUiPreferences();
+}
+
+function restoreBoardViewMode(boardId = state.activeBoardId) {
+  state.viewMode = boardId && state.viewModeByBoardId[String(boardId)] === "list" ? "list" : "kanban";
 }
 
 const elements = {
@@ -142,6 +194,7 @@ const elements = {
   sidebarReopenButton: document.querySelector("#sidebar-reopen-button"),
   newBoardButton: document.querySelector("#new-board-button"),
   searchInput: document.querySelector("#search-input"),
+  searchClearButton: document.querySelector("#search-clear-button"),
   laneFilter: document.querySelector("#lane-filter"),
   viewModeButtons: [...document.querySelectorAll("#view-mode-toggle button")],
   statusFilter: document.querySelector("#status-filter"),
@@ -527,7 +580,9 @@ async function refreshBoards() {
   } else if (state.activeBoardId && !state.boards.some((board) => board.id === state.activeBoardId)) {
     state.activeBoardId = state.boards[0]?.id ?? null;
   }
+  restoreBoardViewMode(state.activeBoardId);
   restoreBoardFilters(state.activeBoardId);
+  restoreBoardFilterExpansion(state.activeBoardId);
   persistUiPreferences();
   renderBoards();
   await refreshBoardDetail();
@@ -535,6 +590,8 @@ async function refreshBoards() {
 
 async function selectBoard(boardId) {
   saveBoardFilters();
+  saveBoardFilterExpansion();
+  saveBoardViewMode();
   state.activeBoardId = boardId;
   state.isRenamingBoard = false;
   state.boardRenameError = "";
@@ -542,7 +599,9 @@ async function selectBoard(boardId) {
   state.editingSidebarTagId = null;
   state.confirmingSidebarTagDeleteId = null;
   state.sidebarTagError = "";
+  restoreBoardViewMode(boardId);
   restoreBoardFilters(boardId);
+  restoreBoardFilterExpansion(boardId);
   await refreshBoardDetail();
   syncBoardUrl();
   persistUiPreferences();
@@ -654,8 +713,12 @@ async function applyRouteFromLocation({ replace = false } = {}) {
     try {
       const ticket = await api(`/api/tickets/${route.id}`);
       saveBoardFilters();
+      saveBoardFilterExpansion();
+      saveBoardViewMode();
       state.activeBoardId = ticket.boardId;
+      restoreBoardViewMode(ticket.boardId);
       restoreBoardFilters(ticket.boardId);
+      restoreBoardFilterExpansion(ticket.boardId);
       await refreshBoardDetail();
       await openEditor(ticket.id, "view");
       persistUiPreferences();
@@ -671,9 +734,13 @@ async function applyRouteFromLocation({ replace = false } = {}) {
   if (route.kind === "board") {
     if (state.boards.some((board) => board.id === route.id)) {
       saveBoardFilters();
+      saveBoardFilterExpansion();
+      saveBoardViewMode();
       state.activeBoardId = route.id;
       state.viewMode = route.viewMode;
+      saveBoardViewMode(route.id, route.viewMode);
       restoreBoardFilters(route.id);
+      restoreBoardFilterExpansion(route.id);
       await refreshBoardDetail();
       persistUiPreferences();
       if (elements.editorDialog.open) {
@@ -690,11 +757,15 @@ async function applyRouteFromLocation({ replace = false } = {}) {
 
   if (state.boards.length > 0) {
     saveBoardFilters();
+    saveBoardFilterExpansion();
+    saveBoardViewMode();
     state.activeBoardId =
       state.activeBoardId && state.boards.some((board) => board.id === state.activeBoardId)
         ? state.activeBoardId
         : state.boards[0].id;
+    restoreBoardViewMode(state.activeBoardId);
     restoreBoardFilters(state.activeBoardId);
+    restoreBoardFilterExpansion(state.activeBoardId);
     await refreshBoardDetail();
     persistUiPreferences();
     if (elements.editorDialog.open) {
@@ -706,6 +777,7 @@ async function applyRouteFromLocation({ replace = false } = {}) {
   }
 
   state.activeBoardId = null;
+  state.viewMode = "kanban";
   persistUiPreferences();
   await refreshBoardDetail();
 }
@@ -719,6 +791,7 @@ function setUrl(pathname, { replace = false } = {}) {
 }
 
 function syncBoardUrl(replace = false) {
+  saveBoardViewMode();
   const pathname = !state.activeBoardId
     ? "/"
     : state.viewMode === "list"
@@ -769,7 +842,9 @@ const {
   filterTicketsForDisplay,
   hasActiveTicketFilters,
   normalizeBoardFiltersForDetail,
+  restoreBoardFilterExpansion,
   restoreBoardFilters,
+  saveBoardFilterExpansion,
   saveBoardFilters,
   syncActiveFilterStyles,
   syncStatusFilter,
@@ -837,8 +912,12 @@ const boardModule = createBoardModule({
   openEditor,
   refreshBoardDetail,
   refreshBoards,
+  restoreBoardFilterExpansion,
   restoreBoardFilters,
+  restoreBoardViewMode,
+  saveBoardFilterExpansion,
   saveBoardFilters,
+  saveBoardViewMode,
   selectBoard,
   sendJson,
   showToast,
