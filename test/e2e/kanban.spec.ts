@@ -124,6 +124,34 @@ test("kanban lane create rename delete and reorder are wired", async ({ page }) 
     await page.reload();
     await expect(page.locator(".lane", { has: page.getByRole("button", { name: "Move between lanes" }) }).locator(".lane-title")).toHaveText("Delta");
 
+    await page.evaluate(({ ticketId }) => {
+      const laneBoard = document.querySelector("#lane-board");
+      const card = document.querySelector(`.ticket-card[data-ticket-id="${ticketId}"]`);
+      const targetHeader = document.querySelector(".lane-title");
+      if (!laneBoard || !card || !targetHeader) {
+        throw new Error("Ticket drag isolation fixture is missing");
+      }
+      const headerBox = targetHeader.getBoundingClientRect();
+      const dataTransfer = new DataTransfer();
+      card.dispatchEvent(new DragEvent("dragstart", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 12,
+        clientY: 12,
+        dataTransfer,
+      }));
+      laneBoard.dispatchEvent(new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+        clientX: headerBox.left + 8,
+        clientY: headerBox.top + 8,
+        dataTransfer,
+      }));
+      card.dispatchEvent(new DragEvent("dragend", { bubbles: true, cancelable: true, dataTransfer }));
+    }, { ticketId: movingTicket.id });
+    await expect(page.locator(".lane-title").first()).toHaveText("Review");
+    await expect(page.locator(".dragging-lane")).toHaveCount(0);
+
     const gammaLane = page.locator(".lane", { has: page.locator(".lane-title", { hasText: "Gamma" }) });
     await gammaLane.locator("[data-action='toggle-lane-actions']").click();
     await gammaLane.locator("[data-action='delete-lane']").click();

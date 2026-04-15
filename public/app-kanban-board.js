@@ -172,6 +172,10 @@ export function createKanbanBoardModule(ctx, options) {
     preview.classList.add("lane-drag-preview");
     preview.style.width = `${box.width}px`;
     preview.style.height = `${Math.min(box.height, 420)}px`;
+    preview.style.position = "fixed";
+    preview.style.top = "-1000px";
+    preview.style.left = "-1000px";
+    preview.style.pointerEvents = "none";
     preview.setAttribute("aria-hidden", "true");
     document.body.append(preview);
     return preview;
@@ -183,6 +187,9 @@ export function createKanbanBoardModule(ctx, options) {
   }
 
   function handleLaneDragOver(event) {
+    if (!elements.laneBoard.classList.contains("is-dragging-lane")) {
+      return;
+    }
     const dragging =
       state.activeLaneDragId == null
         ? null

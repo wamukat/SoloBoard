@@ -33,10 +33,12 @@ const state = {
     priority: [],
     tag: "",
   },
+  filtersByBoardId: {},
   editingTicketId: null,
   activeBoardDragId: null,
   activeLaneDragId: null,
   dialogMode: "view",
+  dialogActivity: [],
   skipDialogCloseSync: false,
   toastTimer: null,
   uxResolver: null,
@@ -88,6 +90,7 @@ const elements = {
   priorityFilterSummary: document.querySelector("#priority-filter-summary"),
   priorityFilterOptions: document.querySelector("#priority-filter .filter-menu-options"),
   tagFilter: document.querySelector("#tag-filter"),
+  resetFiltersButton: document.querySelector("#reset-filters-button"),
   exportBoardButton: document.querySelector("#export-board-button"),
   importBoardInput: document.querySelector("#import-board-input"),
   editorDialog: document.querySelector("#editor-dialog"),
@@ -182,19 +185,15 @@ function bindEvents() {
   elements.boardSettingsToggleButton.addEventListener("click", toggleBoardSettings);
   elements.deleteBoardButton.addEventListener("click", deleteBoard);
   elements.ticketTagToggle.addEventListener("click", handleTicketTagFieldClick);
-  elements.ticketTagSearch.addEventListener("focus", openTicketTagOptions);
   elements.ticketTagSearch.addEventListener("input", handleTicketTagSearchInput);
   elements.ticketTagSearch.addEventListener("keydown", handleTicketTagSearchKeydown);
   elements.ticketBlockerToggle.addEventListener("click", handleBlockerFieldClick);
-  elements.ticketBlockerSearch.addEventListener("focus", openBlockerOptions);
   elements.ticketBlockerSearch.addEventListener("input", handleBlockerSearchInput);
   elements.ticketBlockerSearch.addEventListener("keydown", handleBlockerSearchKeydown);
   elements.ticketChildToggle.addEventListener("click", handleChildFieldClick);
-  elements.ticketChildSearch.addEventListener("focus", openChildOptions);
   elements.ticketChildSearch.addEventListener("input", handleChildSearchInput);
   elements.ticketChildSearch.addEventListener("keydown", handleChildSearchKeydown);
   elements.ticketParentToggle.addEventListener("click", handleParentFieldClick);
-  elements.ticketParentSearch.addEventListener("focus", openParentOptions);
   elements.ticketParentSearch.addEventListener("input", handleParentSearchInput);
   elements.ticketParentSearch.addEventListener("keydown", handleParentSearchKeydown);
   bindFilterEvents();
@@ -202,6 +201,13 @@ function bindEvents() {
   elements.commentForm.addEventListener("submit", addComment);
   elements.saveCommentButton.addEventListener("click", addComment);
   elements.ticketComments.addEventListener("click", handleCommentAction);
+  elements.editorHeader.addEventListener("click", handleDetailClick);
+  elements.ticketView.addEventListener("click", handleDetailClick);
+  elements.editorHeader.addEventListener("change", handleDetailChange);
+  elements.ticketView.addEventListener("change", handleDetailChange);
+  elements.editorHeader.addEventListener("focusout", handleDetailFocusout);
+  elements.editorHeader.addEventListener("keydown", handleDetailKeydown);
+  elements.ticketView.addEventListener("keydown", handleDetailKeydown);
   elements.commentsTabButton.addEventListener("click", () => setDetailTab("comments"));
   elements.activityTabButton.addEventListener("click", () => setDetailTab("activity"));
   elements.editorHeader.addEventListener("pointerdown", handleEditorHeaderPointerDown);
@@ -295,7 +301,7 @@ function handleEditorHeaderPointerDown(event) {
   if (!elements.editorDialog.open) {
     return;
   }
-  if (event.button !== 0 || event.target.closest("button")) {
+  if (event.button !== 0 || event.target.closest("button, input, textarea, select")) {
     return;
   }
   const rect = elements.editorDialog.getBoundingClientRect();
@@ -455,11 +461,8 @@ async function refreshBoards() {
   await refreshBoardDetail();
 }
 
-function resetBoardFilters() {
-  filtersModule.resetBoardFilters();
-}
-
 async function selectBoard(boardId) {
+  saveBoardFilters();
   state.activeBoardId = boardId;
   state.isRenamingBoard = false;
   state.boardRenameError = "";
@@ -467,7 +470,7 @@ async function selectBoard(boardId) {
   state.editingSidebarTagId = null;
   state.confirmingSidebarTagDeleteId = null;
   state.sidebarTagError = "";
-  resetBoardFilters();
+  restoreBoardFilters(boardId);
   await refreshBoardDetail();
   syncBoardUrl();
 }
@@ -481,10 +484,9 @@ async function refreshBoardDetail() {
     renderBoardDetail();
     return;
   }
-  const [detail, allTickets] = await Promise.all([
-    api(`/api/boards/${state.activeBoardId}`),
-    api(buildTicketListUrl()),
-  ]);
+  const detail = await api(`/api/boards/${state.activeBoardId}`);
+  normalizeBoardFiltersForDetail(detail);
+  const allTickets = await api(buildTicketListUrl());
   state.boardTickets = allTickets.tickets;
   state.boardDetail = {
     board: detail.board,
@@ -578,8 +580,9 @@ async function applyRouteFromLocation({ replace = false } = {}) {
   if (route.kind === "ticket") {
     try {
       const ticket = await api(`/api/tickets/${route.id}`);
+      saveBoardFilters();
       state.activeBoardId = ticket.boardId;
-      resetBoardFilters();
+      restoreBoardFilters(ticket.boardId);
       await refreshBoardDetail();
       await openEditor(ticket.id, "view");
       if (replace) {
@@ -593,9 +596,10 @@ async function applyRouteFromLocation({ replace = false } = {}) {
 
   if (route.kind === "board") {
     if (state.boards.some((board) => board.id === route.id)) {
+      saveBoardFilters();
       state.activeBoardId = route.id;
       state.viewMode = route.viewMode;
-      resetBoardFilters();
+      restoreBoardFilters(route.id);
       await refreshBoardDetail();
       if (elements.editorDialog.open) {
         state.skipDialogCloseSync = true;
@@ -610,11 +614,12 @@ async function applyRouteFromLocation({ replace = false } = {}) {
   }
 
   if (state.boards.length > 0) {
+    saveBoardFilters();
     state.activeBoardId =
       state.activeBoardId && state.boards.some((board) => board.id === state.activeBoardId)
         ? state.activeBoardId
         : state.boards[0].id;
-    resetBoardFilters();
+    restoreBoardFilters(state.activeBoardId);
     await refreshBoardDetail();
     if (elements.editorDialog.open) {
       state.skipDialogCloseSync = true;
@@ -684,6 +689,9 @@ const {
   buildTicketListUrl,
   filterTicketsForDisplay,
   hasActiveTicketFilters,
+  normalizeBoardFiltersForDetail,
+  restoreBoardFilters,
+  saveBoardFilters,
   syncActiveFilterStyles,
   syncStatusFilter,
   syncViewMode,
@@ -717,6 +725,10 @@ const {
   handleChildSearchInput,
   handleChildSearchKeydown,
   handleDocumentClick,
+  handleDetailChange,
+  handleDetailClick,
+  handleDetailFocusout,
+  handleDetailKeydown,
   handleEditorDialogClose,
   handleParentChange,
   handleParentFieldClick,
@@ -746,6 +758,8 @@ const boardModule = createBoardModule({
   openEditor,
   refreshBoardDetail,
   refreshBoards,
+  restoreBoardFilters,
+  saveBoardFilters,
   selectBoard,
   sendJson,
   showToast,

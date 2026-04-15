@@ -1,5 +1,6 @@
 export function createFiltersModule(ctx, options) {
   const { state, elements } = ctx;
+  const DEFAULT_BOARD_FILTERS = { q: "", lane: "", status: ["open"], priority: [], tag: "" };
   const STATUS_LABELS = {
     open: "Open",
     resolved: "Resolved",
@@ -24,13 +25,57 @@ export function createFiltersModule(ctx, options) {
   }
 
   function resetBoardFilters() {
-    state.filters = { q: "", lane: "", status: ["open"], priority: [], tag: "" };
-    elements.searchInput.value = "";
-    elements.laneFilter.value = "";
+    applyBoardFilters(DEFAULT_BOARD_FILTERS);
+  }
+
+  function saveBoardFilters(boardId = state.activeBoardId) {
+    if (!boardId) {
+      return;
+    }
+    state.filtersByBoardId[String(boardId)] = cloneFilters(state.filters);
+  }
+
+  function restoreBoardFilters(boardId = state.activeBoardId) {
+    const savedFilters = boardId ? state.filtersByBoardId[String(boardId)] : null;
+    applyBoardFilters(savedFilters ?? DEFAULT_BOARD_FILTERS);
+  }
+
+  function normalizeBoardFiltersForDetail(detail) {
+    let nextFilters = state.filters;
+    if (state.filters.lane && !detail.lanes.some((lane) => String(lane.id) === String(state.filters.lane))) {
+      nextFilters = { ...nextFilters, lane: "" };
+    }
+    if (state.filters.tag && !detail.tags.some((tag) => tag.name === state.filters.tag)) {
+      nextFilters = { ...nextFilters, tag: "" };
+    }
+    if (nextFilters !== state.filters) {
+      applyBoardFilters(nextFilters);
+      saveBoardFilters();
+    }
+  }
+
+  function applyBoardFilters(filters) {
+    state.filters = cloneFilters(filters);
+    syncFilterControls();
+  }
+
+  function syncFilterControls() {
+    elements.searchInput.value = state.filters.q;
+    elements.laneFilter.value = state.filters.lane;
     syncStatusFilter();
     syncPriorityFilter();
-    elements.tagFilter.value = "";
+    elements.tagFilter.value = state.filters.tag;
     syncActiveFilterStyles();
+  }
+
+  function cloneFilters(filters) {
+    return {
+      q: filters?.q ?? "",
+      lane: filters?.lane ?? "",
+      status: Array.isArray(filters?.status) && filters.status.length ? [...filters.status] : ["open"],
+      priority: Array.isArray(filters?.priority) ? [...filters.priority] : [],
+      tag: filters?.tag ?? "",
+    };
   }
 
   function buildTicketListUrl(filters = {}) {
@@ -76,10 +121,6 @@ export function createFiltersModule(ctx, options) {
     elements.viewModeButtons.forEach((button) => {
       button.addEventListener("click", () => {
         state.viewMode = button.dataset.viewMode || "kanban";
-        if (state.viewMode !== "list") {
-          state.filters.lane = "";
-          elements.laneFilter.value = "";
-        }
         syncViewMode();
         syncActiveFilterStyles();
         options.refreshBoardDetail().catch((error) => {
@@ -159,6 +200,13 @@ export function createFiltersModule(ctx, options) {
       syncActiveFilterStyles();
       await options.refreshBoardDetail();
     });
+    elements.resetFiltersButton.addEventListener("click", async () => {
+      resetBoardFilters();
+      saveBoardFilters();
+      collapseFilter(elements.statusFilter, elements.statusFilterToggles, elements.statusFilterOptions);
+      collapseFilter(elements.priorityFilter, elements.priorityFilterToggles, elements.priorityFilterOptions);
+      await options.refreshBoardDetail();
+    });
   }
 
   function syncPriorityFilter() {
@@ -206,6 +254,7 @@ export function createFiltersModule(ctx, options) {
     elements.statusFilter.classList.toggle("is-filter-active", !isDefaultStatusFilter());
     elements.priorityFilter.classList.toggle("is-filter-active", state.filters.priority.length > 0);
     elements.tagFilter.classList.toggle("is-filter-active", state.filters.tag !== "");
+    elements.resetFiltersButton.hidden = !hasActiveTicketFilters();
   }
 
   function isDefaultStatusFilter() {
@@ -258,7 +307,10 @@ export function createFiltersModule(ctx, options) {
     buildTicketListUrl,
     filterTicketsForDisplay,
     hasActiveTicketFilters,
+    normalizeBoardFiltersForDetail,
     resetBoardFilters,
+    restoreBoardFilters,
+    saveBoardFilters,
     syncActiveFilterStyles,
     syncStatusFilter,
     syncViewMode,

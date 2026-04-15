@@ -26,6 +26,7 @@ export function createEditorModule(ctx) {
   const detailModule = createTicketDetailModule({
     ...ctx,
     getBlockingTickets: relationsModule.getBlockingTickets,
+    updateDialogTicket,
   });
 
   const actionsModule = createTicketActionsModule(ctx, {
@@ -50,6 +51,9 @@ export function createEditorModule(ctx) {
   });
 
   function setDialogMode(mode) {
+    if (mode === "edit" && state.dialogTicket) {
+      hydrateEditorForm(state.dialogTicket);
+    }
     state.dialogMode = mode;
     elements.editorDialog.classList.toggle("editor-create-mode", mode === "edit" && !state.editingTicketId);
     elements.editorDialog.classList.toggle("editor-edit-mode", mode === "edit" && Boolean(state.editingTicketId));
@@ -81,6 +85,7 @@ export function createEditorModule(ctx) {
     state.editorChildIds = [];
     state.editorOriginalChildIds = [];
     state.dialogTicket = null;
+    state.dialogActivity = [];
     state.tagQuery = "";
     state.parentQuery = "";
     state.blockerQuery = "";
@@ -110,6 +115,11 @@ export function createEditorModule(ctx) {
     state.dialogTicket = ticket;
     detailModule.syncTicketDetail(ticket, activity);
     elements.ticketComments.innerHTML = commentsModule.renderComments(ticket.comments ?? []);
+    hydrateEditorForm(ticket);
+    detailModule.setDetailTab("comments");
+  }
+
+  function hydrateEditorForm(ticket) {
     elements.ticketTitle.value = ticket.title;
     elements.ticketPriority.value = getPriorityInputValue(ticket.priority);
     elements.ticketResolved.checked = ticket.isResolved;
@@ -130,7 +140,6 @@ export function createEditorModule(ctx) {
     elements.ticketChildSearch.value = "";
     tagPicker.syncOptions();
     relationsModule.syncOptions();
-    detailModule.setDetailTab("comments");
   }
 
   async function refreshDialogTicket(ticketId = state.editingTicketId) {
@@ -146,6 +155,26 @@ export function createEditorModule(ctx) {
     return ticket;
   }
 
+  async function updateDialogTicket(patch, savedMessage = "Saved") {
+    if (!state.editingTicketId) {
+      return null;
+    }
+    setSaveState("saving", "Saving...");
+    try {
+      const updated = await ctx.sendJson(`/api/tickets/${state.editingTicketId}`, {
+        method: "PATCH",
+        body: patch,
+      });
+      await refreshDialogTicket(state.editingTicketId);
+      await ctx.refreshBoardDetail();
+      setSaveState("saved", savedMessage);
+      return updated;
+    } catch (error) {
+      setSaveState("error", "Save failed");
+      throw error;
+    }
+  }
+
   async function openEditor(ticketId = null, mode = "edit", defaultLaneId = null) {
     if (!state.boardDetail) {
       return;
@@ -153,6 +182,8 @@ export function createEditorModule(ctx) {
     state.editingTicketId = ticketId;
     const ticket = ticketId ? await ctx.api(`/api/tickets/${ticketId}`) : null;
     const activity = ticketId ? ((await ctx.api(`/api/tickets/${ticketId}/activity`).catch(() => ({ activity: [] }))).activity ?? []) : [];
+    state.dialogTicket = ticket;
+    state.dialogActivity = activity;
     elements.ticketTitle.value = ticket?.title ?? "";
     elements.ticketPriority.value = getPriorityInputValue(ticket?.priority);
     elements.ticketResolved.checked = ticket?.isResolved ?? false;
@@ -200,6 +231,9 @@ export function createEditorModule(ctx) {
     ctx.syncDialogScrollLock?.();
     ctx.ensureEditorDialogPosition?.();
     ctx.syncDialogScrollLock?.();
+    if (ticketId && mode === "view") {
+      queueMicrotask(() => elements.headerEditButton.focus({ preventScroll: true }));
+    }
     if (ticketId) {
       ctx.syncTicketUrl(ticketId);
     }
@@ -255,6 +289,10 @@ export function createEditorModule(ctx) {
     handleChildSearchInput: relationsModule.handleChildSearchInput,
     handleChildSearchKeydown: relationsModule.handleChildSearchKeydown,
     handleDocumentClick,
+    handleDetailChange: detailModule.handleDetailChange,
+    handleDetailClick: detailModule.handleDetailClick,
+    handleDetailFocusout: detailModule.handleDetailFocusout,
+    handleDetailKeydown: detailModule.handleDetailKeydown,
     handleEditorDialogClose,
     handleParentChange: relationsModule.handleParentChange,
     handleParentFieldClick: relationsModule.handleParentFieldClick,

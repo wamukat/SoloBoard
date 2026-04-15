@@ -37,9 +37,14 @@ test("lane filter does not leak from List view into Kanban view", async ({ page 
 
     await page.getByRole("button", { name: "Kanban" }).click();
     await expect(page.locator("#lane-filter")).toBeHidden();
-    await expect(page.locator("#lane-filter")).toHaveValue("");
     await expect(page.locator(".ticket-card")).toHaveCount(2);
     await expect(page.locator(".ticket-card")).toContainText(["Todo ticket", "Review ticket"]);
+
+    await page.getByRole("button", { name: "List" }).click();
+    await expect(page.locator("#lane-filter")).toBeVisible();
+    await expect(page.locator("#lane-filter")).toHaveValue(String(reviewLane.id));
+    await expect(page.locator(".list-row")).toHaveCount(1);
+    await expect(page.locator(".list-row")).toContainText("Review ticket");
   } finally {
     await page.close();
     await app.close();

@@ -3,6 +3,7 @@ import { renderPriorityIcon } from "./app-priority.js";
 import { icon } from "./icons.js";
 
 export function createKanbanTicketCard(ctx, ticket) {
+  const { state } = ctx;
   const card = document.createElement("article");
   card.className = `ticket-card ${ticket.isResolved ? "resolved" : ""} ${ticket.isArchived ? "archived" : ""}`;
   card.draggable = true;
@@ -26,9 +27,19 @@ export function createKanbanTicketCard(ctx, ticket) {
     event.stopPropagation();
     ctx.openEditor(ticket.id, "view");
   });
-  card.addEventListener("dragstart", () => {
+  card.addEventListener("dragstart", (event) => {
+    event.stopPropagation();
+    state.activeLaneDragId = null;
+    card.closest(".lane-board")?.classList.remove("is-dragging-lane");
     card.classList.add("dragging");
     card.closest(".lane-board")?.classList.add("is-dragging-ticket");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-soloboard-ticket", String(ticket.id));
+      event.dataTransfer.setData("text/plain", `ticket:${ticket.id}`);
+      const box = card.getBoundingClientRect();
+      event.dataTransfer.setDragImage(card, event.clientX - box.left, event.clientY - box.top);
+    }
   });
   card.addEventListener("dragend", () => {
     card.classList.remove("dragging");

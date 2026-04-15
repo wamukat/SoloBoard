@@ -76,10 +76,11 @@ test("ticket editor creates updates archives restores and deletes tickets", asyn
     await page.locator("#status-filter [data-status-filter='resolved']").click();
     await page.locator("#status-filter [data-status-filter='archived']").click();
     await page.getByRole("button", { name: "Updated from editor" }).click();
-    await expect(page.locator("#editor-header-state .ticket-state-pill")).toHaveText(["Resolved", "Archived"]);
+    await expect(page.locator("#editor-header-state .ticket-state-pill > span")).toHaveText(["Resolved", "Archived"]);
     await expect(page.locator("#editor-header-state .ticket-state-pill-resolved use[href='/icons.svg#check']")).toHaveCount(1);
     await expect(page.locator("#editor-header-state .ticket-state-pill-archived use[href='/icons.svg#archive']")).toHaveCount(1);
-    await expect(page.locator(".editor-dialog-heading-top > *")).toHaveText([`#${createdTicket.id}`, "ResolvedArchived", "High"]);
+    await expect(page.locator("#editor-header-id")).toHaveText(`#${createdTicket.id}`);
+    await expect(page.locator("#editor-header-priority")).toContainText("High");
     await expect(page.locator("#ticket-view-meta .ticket-archived-label")).toHaveCount(0);
     await page.locator("#header-edit-button").click();
     await expect(page.locator("#archive-ticket-button")).toContainText("Restore");
@@ -99,6 +100,7 @@ test("ticket editor creates updates archives restores and deletes tickets", asyn
     });
     await page.goto(`${baseUrl}/tickets/${deleteCandidate.id}`);
     await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
+    await expect(page.locator("#header-edit-button")).toBeFocused();
     await page.locator("#header-edit-button").click();
     await page.locator("#delete-ticket-button").click();
     await expect(page.locator("#ux-dialog")).toHaveJSProperty("open", true);
@@ -136,8 +138,18 @@ test("ticket editor manages parent blocker and child relations", async ({ page }
     });
     await createTicket(page.request, baseUrl, boardPayload.board.id, {
       laneId: lane.id,
+      title: "Parent relation alternate",
+      priority: 7,
+    });
+    await createTicket(page.request, baseUrl, boardPayload.board.id, {
+      laneId: lane.id,
       title: "Blocker relation candidate",
       priority: 7,
+    });
+    await createTicket(page.request, baseUrl, boardPayload.board.id, {
+      laneId: lane.id,
+      title: "Blocker relation alternate",
+      priority: 5,
     });
     await createTicket(page.request, baseUrl, boardPayload.board.id, {
       laneId: lane.id,
@@ -145,25 +157,70 @@ test("ticket editor manages parent blocker and child relations", async ({ page }
       priority: 6,
     });
     await createTag(page.request, baseUrl, boardPayload.board.id, {
-      name: "Focus tag",
+      name: "Focus alpha",
       color: "#1f6f5f",
     });
+    await createTag(page.request, baseUrl, boardPayload.board.id, {
+      name: "Focus beta",
+      color: "#1f6f5f",
+    });
+    const cancelTag = await createTag(page.request, baseUrl, boardPayload.board.id, {
+      name: "Cancel tag",
+      color: "#1f6f5f",
+    });
+    const taggedTicket = await createTicket(page.request, baseUrl, boardPayload.board.id, {
+      laneId: lane.id,
+      title: "Tagged cancel ticket",
+      tagIds: [cancelTag.id],
+    });
+
+    await page.goto(`${baseUrl}/tickets/${taggedTicket.id}`);
+    await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
+    await page.locator("#header-edit-button").click();
+    await expect(page.locator("#ticket-tag-summary")).toContainText("Cancel tag");
+    await page.locator("[data-remove-tag-id]").click();
+    await expect(page.locator("#ticket-tag-summary")).not.toContainText("Cancel tag");
+    await page.locator("#cancel-edit-button").click();
+    await expect(page.locator("#ticket-view-meta")).toContainText("Cancel tag");
+    await page.locator("#header-edit-button").click();
+    await expect(page.locator("#ticket-tag-summary")).toContainText("Cancel tag");
 
     await page.goto(`${baseUrl}/tickets/${mainTicket.id}`);
     await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
     await page.locator("#header-edit-button").click();
 
+    await page.locator("#ticket-tag-search").focus();
+    await expect(page.locator("#ticket-tag-options")).toHaveJSProperty("hidden", true);
     await page.locator("#ticket-tag-search").fill("Focus");
     await expect(page.locator("#ticket-tag-options")).toHaveJSProperty("hidden", false);
+    await expect(page.locator("#ticket-tag-options .tag-picker-item.active")).toContainText("Focus alpha");
+    await page.locator("#ticket-tag-search").press("ArrowDown");
+    await expect(page.locator("#ticket-tag-options .tag-picker-item.active")).toContainText("Focus beta");
+    await page.locator("#ticket-tag-search").press("ArrowUp");
+    await expect(page.locator("#ticket-tag-options .tag-picker-item.active")).toContainText("Focus alpha");
+    await page.locator("#ticket-tag-search").press("Enter");
+    await expect(page.locator("#ticket-tag-summary")).toContainText("Focus alpha");
+    await page.locator("#ticket-tag-search").fill("Focus");
+    await expect(page.locator("#ticket-tag-options [data-tag-id]")).toHaveCount(1);
+    await expect(page.locator("#ticket-tag-options")).not.toContainText("Focus alpha");
+    await expect(page.locator("#ticket-tag-options")).toContainText("Focus beta");
 
+    await page.locator("#ticket-parent-search").focus();
+    await expect(page.locator("#ticket-parent-options")).toHaveJSProperty("hidden", true);
     await page.locator("#ticket-parent-search").fill("Parent relation");
     await expect(page.locator("#ticket-parent-options")).toHaveJSProperty("hidden", false);
     await expect(page.locator("#ticket-tag-options")).toHaveJSProperty("hidden", true);
+    await expect(page.locator("#ticket-parent-options .tag-picker-item.active")).toContainText("Parent relation candidate");
+    await page.locator("#ticket-parent-search").press("ArrowDown");
+    await expect(page.locator("#ticket-parent-options .tag-picker-item.active")).toContainText("Parent relation alternate");
+    await page.locator("#ticket-parent-search").press("ArrowUp");
     await page.locator("#ticket-parent-search").press("Enter");
     await expect(page.locator("#ticket-parent-summary")).toContainText("Parent relation candidate");
     await expect(page.locator("#ticket-child-search")).toBeDisabled();
     await expect(page.locator("#ticket-child-summary")).toContainText("Clear parent to edit children");
 
+    await page.locator("#ticket-blocker-search").focus();
+    await expect(page.locator("#ticket-blocker-options")).toHaveJSProperty("hidden", true);
     await page.locator("#ticket-blocker-search").fill("Blocker relation");
     await expect(page.locator("#ticket-blocker-options")).toHaveJSProperty("hidden", false);
     await expect(page.locator("#ticket-parent-options")).toHaveJSProperty("hidden", true);
@@ -185,8 +242,16 @@ test("ticket editor manages parent blocker and child relations", async ({ page }
     await expect(page.locator("#ticket-child-search")).not.toBeDisabled();
 
     await page.locator("#ticket-blocker-search").fill("Blocker relation");
+    await expect(page.locator("#ticket-blocker-options .tag-picker-item.active")).toContainText("Blocker relation candidate");
+    await page.locator("#ticket-blocker-search").press("ArrowDown");
+    await expect(page.locator("#ticket-blocker-options .tag-picker-item.active")).toContainText("Blocker relation alternate");
+    await page.locator("#ticket-blocker-search").press("ArrowUp");
     await page.locator("#ticket-blocker-search").press("Enter");
     await expect(page.locator("#ticket-blocker-summary")).toContainText("Blocker relation candidate");
+    await page.locator("#ticket-blocker-search").fill("Blocker relation");
+    await expect(page.locator("#ticket-blocker-options [data-blocker-id]")).toHaveCount(1);
+    await expect(page.locator("#ticket-blocker-options")).not.toContainText("Blocker relation candidate");
+    await expect(page.locator("#ticket-blocker-options")).toContainText("Blocker relation alternate");
     await page.locator("[data-remove-blocker-id]").click();
     await expect(page.locator("#ticket-blocker-summary")).not.toContainText("Blocker relation candidate");
     await page.locator("#ticket-blocker-search").fill("Blocker relation");
@@ -195,6 +260,8 @@ test("ticket editor manages parent blocker and child relations", async ({ page }
     await page.locator("#ticket-child-search").fill("Child relation");
     await page.locator("#ticket-child-search").press("Enter");
     await expect(page.locator("#ticket-child-summary")).toContainText("Child relation candidate");
+    await page.locator("#ticket-child-search").fill("Child relation");
+    await expect(page.locator("#ticket-child-options [data-child-id]")).toHaveCount(0);
     await page.locator("[data-remove-child-id]").click();
     await expect(page.locator("#ticket-child-summary")).not.toContainText("Child relation candidate");
     await page.locator("#ticket-child-search").fill("Child relation");
@@ -213,6 +280,101 @@ test("ticket editor manages parent blocker and child relations", async ({ page }
     await expect(page.locator("#ticket-relations")).toContainText("Blocker relation candidate");
     await expect(page.locator("#ticket-relations")).toContainText("Children");
     await expect(page.locator("#ticket-relations")).toContainText("Child relation candidate");
+  } finally {
+    await close();
+  }
+});
+
+test("ticket detail supports focused inline updates", async ({ page }) => {
+  const { baseUrl, close } = await startTestApp(page);
+
+  try {
+    const boardPayload = await createBoard(page.request, baseUrl, {
+      name: "Inline Detail Board",
+      laneNames: ["Todo", "Review"],
+    });
+    const [todoLane] = boardPayload.lanes;
+    const ticket = await createTicket(page.request, baseUrl, boardPayload.board.id, {
+      laneId: todoLane.id,
+      title: "Inline detail ticket",
+      bodyMarkdown: "Original **body**",
+      priority: 2,
+      isResolved: true,
+      isArchived: true,
+    });
+
+    await page.goto(`${baseUrl}/tickets/${ticket.id}`);
+    await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
+    await expect(page.locator("#ticket-view")).toBeVisible();
+
+    await page.locator("[data-detail-edit='title']").click();
+    await page.locator("[data-detail-title-input]").fill("Cancelled inline title");
+    await page.locator("#activity-tab-button").click();
+    await expect(page.locator("[data-detail-title-input]")).toHaveCount(0);
+    await expect(page.locator("#editor-header-title")).toContainText("Inline detail ticket");
+
+    await page.locator("[data-detail-edit='title']").click();
+    await page.locator("[data-detail-title-input]").fill("Inline title updated");
+    const titleResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/tickets/${ticket.id}`) &&
+        response.request().method() === "PATCH",
+    );
+    await page.locator("[data-detail-title-input]").press("Enter");
+    expect((await titleResponse).status()).toBe(200);
+    await expect(page.locator("#editor-header-title")).toContainText("Inline title updated");
+
+    await page.locator("[data-detail-edit='priority']").click();
+    await page.locator("#activity-tab-button").click();
+    await expect(page.locator("[data-detail-priority-select]")).toHaveCount(0);
+    await expect(page.locator("#editor-header-priority")).toContainText("Medium");
+
+    await page.locator("[data-detail-edit='priority']").click();
+    const priorityResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/tickets/${ticket.id}`) &&
+        response.request().method() === "PATCH",
+    );
+    await page.locator("[data-detail-priority-select]").selectOption("4");
+    expect((await priorityResponse).status()).toBe(200);
+    await expect(page.locator("#editor-header-priority")).toContainText("Urgent");
+
+    await expect(page.locator("#ticket-view-meta")).not.toContainText("Lane");
+    await expect(page.locator("[data-detail-edit='lane']")).toHaveCount(0);
+
+    const resolvedResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/tickets/${ticket.id}`) &&
+        response.request().method() === "PATCH",
+    );
+    await page.locator("[data-detail-state-pill='resolved']").click();
+    await expect(page.locator("[data-detail-state-action='resolved']")).toHaveText("Open");
+    await page.locator("[data-detail-state-action='resolved']").click();
+    expect((await resolvedResponse).status()).toBe(200);
+    await expect(page.locator("[data-detail-state-pill='resolved']")).toHaveCount(0);
+
+    const archivedResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/tickets/${ticket.id}`) &&
+        response.request().method() === "PATCH",
+    );
+    await page.locator("[data-detail-state-pill='archived']").click();
+    await expect(page.locator("[data-detail-state-action='archived']")).toHaveText("Restore");
+    await page.locator("[data-detail-state-action='archived']").click();
+    expect((await archivedResponse).status()).toBe(200);
+    await expect(page.locator("[data-detail-state-pill='archived']")).toHaveCount(0);
+
+    await page.locator("[data-detail-edit='body']").click();
+    await page.locator("[data-detail-body-input]").fill("Updated body\n\n- via detail");
+    const bodyResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/tickets/${ticket.id}`) &&
+        response.request().method() === "PATCH",
+    );
+    await page.locator("[data-detail-body-input]").press("Control+Enter");
+    expect((await bodyResponse).status()).toBe(200);
+    await expect(page.locator("#ticket-view-body")).toContainText("Updated body");
+    await expect(page.locator("[data-detail-body-input]")).toHaveCount(0);
   } finally {
     await close();
   }

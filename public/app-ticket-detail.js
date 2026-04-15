@@ -4,6 +4,8 @@ import { renderPriorityBadge } from "./app-priority.js";
 
 export function createTicketDetailModule(ctx) {
   const { state, elements } = ctx;
+  let activeInlineEdit = null;
+  let expandedStateAction = null;
 
   function setDetailTab(tab) {
     const showComments = tab !== "activity";
@@ -16,10 +18,15 @@ export function createTicketDetailModule(ctx) {
   }
 
   function syncTicketDetail(ticket, activity = []) {
+    state.dialogActivity = activity;
     syncEditorHeader(ticket);
     elements.ticketViewMeta.innerHTML = renderTicketMeta(ticket);
     syncTicketRelations(ticket);
-    elements.ticketViewBody.innerHTML = ticket?.bodyHtml || '<p class="muted">No description</p>';
+    if (activeInlineEdit === "body") {
+      renderBodyEditor();
+    } else {
+      renderBodyDisplay(ticket);
+    }
     elements.ticketActivity.innerHTML = renderActivity(activity);
   }
 
@@ -39,10 +46,10 @@ export function createTicketDetailModule(ctx) {
     elements.editorHeaderState.hidden = state.dialogMode !== "view" || !statePills;
     elements.editorHeaderState.innerHTML = statePills;
     elements.editorHeaderId.textContent = `#${ticket.id}`;
-    elements.editorHeaderTitle.textContent = ticket.title;
+    renderHeaderTitle(ticket);
     elements.editorHeaderTitle.hidden = state.dialogMode !== "view";
-    const headerPriority = renderPriorityBadge(ticket.priority);
-    elements.editorHeaderPriority.innerHTML = headerPriority;
+    renderHeaderPriority(ticket);
+    const headerPriority = elements.editorHeaderPriority.innerHTML;
     elements.editorHeaderPriority.hidden = state.dialogMode !== "view" || !headerPriority;
     elements.headerEditButton.hidden = state.dialogMode !== "view";
     elements.archiveTicketButton.hidden = state.dialogMode !== "edit";
@@ -63,15 +70,90 @@ export function createTicketDetailModule(ctx) {
     `;
   }
 
+  function renderHeaderTitle(ticket) {
+    if (activeInlineEdit === "title") {
+      elements.editorHeaderTitle.innerHTML = `
+        <input class="ticket-inline-title-input" data-detail-title-input value="${ctx.escapeHtml(ticket.title)}" aria-label="Ticket title" />
+      `;
+      queueMicrotask(() => {
+        const input = elements.editorHeaderTitle.querySelector("[data-detail-title-input]");
+        input?.focus();
+        input?.select();
+      });
+      return;
+    }
+    elements.editorHeaderTitle.innerHTML = `
+      <button type="button" class="ticket-inline-title-button" data-detail-edit="title">
+        <span>${ctx.escapeHtml(ticket.title)}</span>
+      </button>
+    `;
+  }
+
+  function renderHeaderPriority(ticket) {
+    if (activeInlineEdit === "priority") {
+      elements.editorHeaderPriority.innerHTML = renderPrioritySelect(ticket);
+      queueMicrotask(() => elements.editorHeaderPriority.querySelector("[data-detail-priority-select]")?.focus());
+      return;
+    }
+    elements.editorHeaderPriority.innerHTML = `
+      <button type="button" class="ticket-detail-badge-button" data-detail-edit="priority">
+        ${renderPriorityBadge(ticket.priority)}
+      </button>
+    `;
+  }
+
+  function renderPrioritySelect(ticket) {
+    const value = String(ticket.priority >= 4 ? 4 : ticket.priority || 2);
+    return `
+      <select class="ticket-detail-select ticket-detail-priority-select" data-detail-priority-select aria-label="Priority">
+        ${[
+          ["1", "Low"],
+          ["2", "Medium"],
+          ["3", "High"],
+          ["4", "Urgent"],
+        ].map(([optionValue, label]) => `<option value="${optionValue}" ${value === optionValue ? "selected" : ""}>${label}</option>`).join("")}
+      </select>
+    `;
+  }
+
   function renderHeaderStatePills(ticket) {
     const pills = [];
     if (ticket.isResolved) {
-      pills.push(`<span class="ticket-state-pill ticket-state-pill-resolved">${icon("check")}<span>Resolved</span></span>`);
+      pills.push(renderStatePill({
+        key: "resolved",
+        label: "Resolved",
+        iconName: "check",
+        actionLabel: "Open",
+        actionAriaLabel: "Mark open",
+      }));
     }
     if (ticket.isArchived) {
-      pills.push(`<span class="ticket-state-pill ticket-state-pill-archived">${icon("archive")}<span>Archived</span></span>`);
+      pills.push(renderStatePill({
+        key: "archived",
+        label: "Archived",
+        iconName: "archive",
+        actionLabel: "Restore",
+        actionAriaLabel: "Restore ticket",
+      }));
     }
     return pills.join("");
+  }
+
+  function renderStatePill({ key, label, iconName, actionLabel, actionAriaLabel }) {
+    const expanded = expandedStateAction === key;
+    return `
+      <span
+        class="ticket-state-pill ticket-state-pill-${key}${expanded ? " expanded" : ""}"
+        data-detail-state-pill="${key}"
+        role="button"
+        tabindex="0"
+        aria-expanded="${String(expanded)}"
+        title="${ctx.escapeHtml(label)}"
+      >
+        ${icon(iconName)}<span>${ctx.escapeHtml(label)}</span>
+        <button type="button" class="ticket-state-pill-action" data-detail-state-action="${key}" aria-label="${ctx.escapeHtml(actionAriaLabel)}" ${expanded ? "" : "hidden"}>${ctx.escapeHtml(actionLabel)}</button>
+      </span>
+    `;
   }
 
   function syncTicketRelations(ticket) {
@@ -121,8 +203,165 @@ export function createTicketDetailModule(ctx) {
       .join("");
   }
 
+  function startInlineEdit(field) {
+    activeInlineEdit = field;
+    syncTicketDetail(state.dialogTicket, state.dialogActivity ?? []);
+  }
+
+  function cancelInlineEdit() {
+    if (!activeInlineEdit) {
+      return;
+    }
+    activeInlineEdit = null;
+    syncTicketDetail(state.dialogTicket, state.dialogActivity ?? []);
+  }
+
+  async function updateInlineTicket(patch, savedMessage = "Saved") {
+    if (!state.dialogTicket || !ctx.updateDialogTicket) {
+      return;
+    }
+    activeInlineEdit = null;
+    expandedStateAction = null;
+    await ctx.updateDialogTicket(patch, savedMessage);
+  }
+
+  function renderBodyEditor() {
+    activeInlineEdit = "body";
+    elements.ticketViewBody.classList.add("ticket-detail-body-editing");
+    elements.ticketViewBody.innerHTML = `
+      <textarea class="ticket-detail-body-input" data-detail-body-input rows="10" aria-label="Ticket body">${ctx.escapeHtml(state.dialogTicket?.bodyMarkdown ?? "")}</textarea>
+      <div class="ticket-detail-body-actions">
+        <span class="muted">Ctrl+Enter / Cmd+Enter to save</span>
+        <div class="editor-actions-right">
+          <button type="button" class="ghost" data-detail-cancel="body">Cancel</button>
+          <button type="button" class="primary-action" data-detail-save-body>Save</button>
+        </div>
+      </div>
+    `;
+    queueMicrotask(() => elements.ticketViewBody.querySelector("[data-detail-body-input]")?.focus());
+  }
+
+  function renderBodyDisplay(ticket) {
+    elements.ticketViewBody.classList.remove("ticket-detail-body-editing");
+    elements.ticketViewBody.innerHTML = `
+      <div class="ticket-detail-body-content">${ticket?.bodyHtml || '<p class="muted">No description</p>'}</div>
+      <button type="button" class="ticket-detail-inline-edit-button" data-detail-edit="body">
+        ${icon("pencil")}<span>Edit description</span>
+      </button>
+    `;
+  }
+
+  function handleDetailClick(event) {
+    const target = event.target;
+    if (!(target instanceof Element) || state.dialogMode !== "view") {
+      return;
+    }
+    const editTarget = target.closest("[data-detail-edit]");
+    if (editTarget) {
+      const field = editTarget.getAttribute("data-detail-edit");
+      if (field === "body") {
+        renderBodyEditor();
+        return;
+      }
+      startInlineEdit(field);
+      return;
+    }
+    const stateAction = target.closest("[data-detail-state-action]");
+    if (stateAction) {
+      const action = stateAction.getAttribute("data-detail-state-action");
+      if (action === "resolved") {
+        updateInlineTicket({ isResolved: false }, "Reopened").catch((error) => ctx.showToast(error.message, "error"));
+      } else if (action === "archived") {
+        updateInlineTicket({ isArchived: false }, "Restored").catch((error) => ctx.showToast(error.message, "error"));
+      }
+      return;
+    }
+    const statePill = target.closest("[data-detail-state-pill]");
+    if (statePill) {
+      const action = statePill.getAttribute("data-detail-state-pill");
+      expandedStateAction = expandedStateAction === action ? null : action;
+      syncEditorHeader(state.dialogTicket);
+      return;
+    }
+    if (expandedStateAction) {
+      expandedStateAction = null;
+      syncEditorHeader(state.dialogTicket);
+    }
+    if (target.closest("[data-detail-cancel]")) {
+      cancelInlineEdit();
+      return;
+    }
+    if (target.closest("[data-detail-save-body]")) {
+      const input = elements.ticketViewBody.querySelector("[data-detail-body-input]");
+      updateInlineTicket({ bodyMarkdown: input?.value ?? "" }).catch((error) => ctx.showToast(error.message, "error"));
+    }
+  }
+
+  function handleDetailChange(event) {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement) || state.dialogMode !== "view") {
+      return;
+    }
+    if (target.matches("[data-detail-priority-select]")) {
+      updateInlineTicket({ priority: Number(target.value) }).catch((error) => ctx.showToast(error.message, "error"));
+    }
+  }
+
+  function handleDetailFocusout(event) {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || state.dialogMode !== "view") {
+      return;
+    }
+    if (target.matches("[data-detail-title-input], [data-detail-priority-select]")) {
+      queueMicrotask(() => {
+        if (activeInlineEdit && document.activeElement !== target) {
+          cancelInlineEdit();
+        }
+      });
+    }
+  }
+
+  function handleDetailKeydown(event) {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || state.dialogMode !== "view") {
+      return;
+    }
+    if (event.key === "Escape" && (activeInlineEdit || expandedStateAction)) {
+      event.preventDefault();
+      expandedStateAction = null;
+      cancelInlineEdit();
+      if (!activeInlineEdit) {
+        syncEditorHeader(state.dialogTicket);
+      }
+      return;
+    }
+    if (target.matches("[data-detail-state-pill]") && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      const action = target.getAttribute("data-detail-state-pill");
+      expandedStateAction = expandedStateAction === action ? null : action;
+      syncEditorHeader(state.dialogTicket);
+      return;
+    }
+    if (target.matches("[data-detail-title-input]") && event.key === "Enter") {
+      event.preventDefault();
+      const title = target.value.trim();
+      if (title) {
+        updateInlineTicket({ title }).catch((error) => ctx.showToast(error.message, "error"));
+      }
+      return;
+    }
+    if (target.matches("[data-detail-body-input]") && event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      updateInlineTicket({ bodyMarkdown: target.value }).catch((error) => ctx.showToast(error.message, "error"));
+    }
+  }
+
   return {
     setDetailTab,
+    handleDetailChange,
+    handleDetailClick,
+    handleDetailFocusout,
+    handleDetailKeydown,
     syncEditorHeader,
     syncTicketDetail,
   };

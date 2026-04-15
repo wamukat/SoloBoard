@@ -135,6 +135,7 @@
 .editor-dialog-heading {
   display: grid;
   gap: 0.32rem;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -143,13 +144,17 @@
   align-items: center;
   gap: 0.45rem;
   min-width: 0;
+  width: 100%;
   flex-wrap: wrap;
   padding-top: 0.1rem;
 }
 
 .editor-header-title {
+  flex: 1 1 auto;
   margin: 0;
-  max-width: 38rem;
+  width: 100%;
+  max-width: none;
+  min-width: min(28rem, 100%);
   overflow-wrap: anywhere;
   color: var(--text);
   font-size: var(--font-size-section-title);
@@ -186,7 +191,11 @@
   flex-wrap: wrap;
 }
 
-.editor-dialog-heading-top .ticket-priority-badge {
+.editor-dialog-heading-top .ticket-priority-badge,
+.editor-dialog-heading-top .ticket-state-pill {
   min-height: 1.45rem;
+}
+
+.editor-dialog-heading-top .ticket-priority-badge {
   margin-left: 0.05rem;
 }

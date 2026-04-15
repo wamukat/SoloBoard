@@ -1,5 +1,6 @@
 export function createTicketRelationPicker(ctx) {
   const { elements } = ctx;
+  let activeOptionIndex = 0;
 
   function getSelectedTickets() {
     return ctx.getSelectedTicketIds().map(ctx.getTicketById).filter(Boolean);
@@ -23,16 +24,24 @@ export function createTicketRelationPicker(ctx) {
       }
     }
 
+    const query = ctx.getQuery().trim();
+    if (!query) {
+      elements.options.innerHTML = "";
+      activeOptionIndex = 0;
+      return;
+    }
+
     const visibleTickets = ctx.getAvailableTickets().filter((ticket) => {
       if (selectedIds.includes(ticket.id)) {
-        return true;
+        return false;
       }
-      return ctx.matchTicketQuery(ticket, ctx.getQuery());
+      return ctx.matchTicketQuery(ticket, query);
     });
 
     elements.options.innerHTML = visibleTickets.length
       ? visibleTickets.map((ticket) => ctx.renderOption(ticket, ctx.optionAttr, selectedIds.includes(ticket.id))).join("")
       : '<div class="tag-picker-empty">No matching tickets</div>';
+    syncActiveOption();
   }
 
   function openOptions() {
@@ -47,6 +56,7 @@ export function createTicketRelationPicker(ctx) {
   function closeOptions() {
     elements.options.hidden = true;
     elements.toggle.setAttribute("aria-expanded", "false");
+    activeOptionIndex = 0;
   }
 
   function handleFieldClick(event) {
@@ -56,14 +66,17 @@ export function createTicketRelationPicker(ctx) {
       ctx.removeTicket(Number(removeButton.getAttribute(ctx.removeAttr)));
       return;
     }
-    openOptions();
     elements.search.focus();
   }
 
   function handleSearchInput(event) {
     ctx.setQuery(event.target.value);
-    openOptions();
     syncOptions();
+    if (event.target.value.trim()) {
+      openOptions();
+    } else {
+      closeOptions();
+    }
   }
 
   function handleSearchKeydown(event) {
@@ -73,10 +86,16 @@ export function createTicketRelationPicker(ctx) {
       ctx.removeTicket(selectedIds[selectedIds.length - 1]);
       return;
     }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      moveActiveOption(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
-      selectFirstOption();
+      selectActiveOption();
       return;
     }
     if (event.key === "Escape") {
@@ -87,12 +106,41 @@ export function createTicketRelationPicker(ctx) {
     }
   }
 
-  function selectFirstOption() {
-    const firstOption = elements.options.querySelector(`[${ctx.optionAttr}]`);
-    if (!firstOption) {
+  function getOptionButtons() {
+    return [...elements.options.querySelectorAll(`[${ctx.optionAttr}]`)];
+  }
+
+  function syncActiveOption() {
+    const options = getOptionButtons();
+    if (options.length === 0) {
+      activeOptionIndex = 0;
+      return;
+    }
+    activeOptionIndex = Math.min(Math.max(activeOptionIndex, 0), options.length - 1);
+    options.forEach((option, index) => {
+      const active = index === activeOptionIndex;
+      option.classList.toggle("active", active);
+      option.setAttribute("aria-selected", String(active));
+    });
+  }
+
+  function moveActiveOption(delta) {
+    const options = getOptionButtons();
+    if (options.length === 0) {
+      return;
+    }
+    activeOptionIndex = (activeOptionIndex + delta + options.length) % options.length;
+    syncActiveOption();
+    options[activeOptionIndex]?.scrollIntoView({ block: "nearest" });
+  }
+
+  function selectActiveOption() {
+    const options = getOptionButtons();
+    const option = options[activeOptionIndex] ?? options[0];
+    if (!option) {
       return false;
     }
-    selectTicket(Number(firstOption.getAttribute(ctx.optionAttr)));
+    selectTicket(Number(option.getAttribute(ctx.optionAttr)));
     return true;
   }
 
@@ -101,7 +149,7 @@ export function createTicketRelationPicker(ctx) {
     ctx.setQuery("");
     elements.search.value = "";
     syncOptions();
-    openOptions();
+    closeOptions();
     elements.search.focus();
   }
 

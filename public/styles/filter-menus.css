@@ -176,3 +176,29 @@
 .toolbar-utility-button.active {
   color: var(--accent);
 }
+
+.toolbar-reset-filters {
+  min-height: 2.45rem;
+  margin-left: auto;
+  padding: 0 0.75rem;
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: var(--accent);
+  font-size: var(--font-size-control);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
+.toolbar-reset-filters[hidden] {
+  display: none;
+}
+
+.toolbar-reset-filters .icon {
+  width: var(--icon-size-meta);
+  height: var(--icon-size-meta);
+}
+
+.toolbar-reset-filters:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+}

@@ -100,7 +100,9 @@ export function createBoardSettingsModule(ctx) {
       submitLabel: "Delete",
       run: async () => {
         await ctx.api(`/api/boards/${board.id}`, { method: "DELETE" });
+        delete state.filtersByBoardId[String(board.id)];
         state.activeBoardId = nextBoard?.id ?? null;
+        ctx.restoreBoardFilters?.(state.activeBoardId);
         await ctx.refreshBoards();
         ctx.syncBoardUrl();
       },
@@ -131,7 +133,9 @@ export function createBoardSettingsModule(ctx) {
       method: "POST",
       body: JSON.stringify(payload),
     });
+    ctx.saveBoardFilters?.();
     state.activeBoardId = imported.board.id;
+    ctx.restoreBoardFilters?.(imported.board.id);
     event.target.value = "";
     await ctx.refreshBoards();
     ctx.syncBoardUrl();

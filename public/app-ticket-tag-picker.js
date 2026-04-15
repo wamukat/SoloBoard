@@ -9,6 +9,7 @@ export function renderTicketTagChip(tag, escapeHtml) {
 
 export function createTicketTagPicker(ctx) {
   const { state, elements } = ctx;
+  let activeOptionIndex = 0;
 
   function syncOptions() {
     if (!state.boardDetail) {
@@ -25,17 +26,15 @@ export function createTicketTagPicker(ctx) {
     const createLabel = state.tagQuery.trim();
     const hasExactMatch = state.boardDetail.tags.some((tag) => tag.name.toLowerCase() === query);
 
-    if (state.boardDetail.tags.length === 0 && !createLabel) {
-      elements.ticketTagOptions.innerHTML = '<div class="tag-picker-empty">Type a tag name to create it</div>';
+    if (!createLabel) {
+      elements.ticketTagOptions.innerHTML = "";
+      activeOptionIndex = 0;
       return;
     }
 
     const visibleTags = state.boardDetail.tags.filter((tag) => {
       if (state.editorTagIds.includes(tag.id)) {
-        return true;
-      }
-      if (!query) {
-        return true;
+        return false;
       }
       return tag.name.toLowerCase().includes(query);
     });
@@ -64,6 +63,7 @@ export function createTicketTagPicker(ctx) {
       `
       : "";
     elements.ticketTagOptions.innerHTML = `${optionHtml}${createHtml}`;
+    syncActiveOption();
   }
 
   function openOptions() {
@@ -75,6 +75,7 @@ export function createTicketTagPicker(ctx) {
   function closeOptions() {
     elements.ticketTagOptions.hidden = true;
     elements.ticketTagToggle.setAttribute("aria-expanded", "false");
+    activeOptionIndex = 0;
   }
 
   function handleFieldClick(event) {
@@ -84,14 +85,17 @@ export function createTicketTagPicker(ctx) {
       toggleTag(Number(removeButton.dataset.removeTagId));
       return;
     }
-    openOptions();
     elements.ticketTagSearch.focus();
   }
 
   function handleSearchInput(event) {
     state.tagQuery = event.target.value;
-    openOptions();
     syncOptions();
+    if (state.tagQuery.trim()) {
+      openOptions();
+    } else {
+      closeOptions();
+    }
   }
 
   function handleSearchKeydown(event) {
@@ -101,10 +105,16 @@ export function createTicketTagPicker(ctx) {
       syncOptions();
       return;
     }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      moveActiveOption(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
-      selectFirstOption(event);
+      selectActiveOption(event);
       return;
     }
     if (event.key === "Escape") {
@@ -115,16 +125,47 @@ export function createTicketTagPicker(ctx) {
     }
   }
 
-  function selectFirstOption(event) {
-    const firstOption = elements.ticketTagOptions.querySelector("[data-tag-id]");
+  function getOptionButtons() {
+    return [...elements.ticketTagOptions.querySelectorAll("[data-tag-id], [data-create-tag-from-query]")];
+  }
+
+  function syncActiveOption() {
+    const options = getOptionButtons();
+    if (options.length === 0) {
+      activeOptionIndex = 0;
+      return;
+    }
+    activeOptionIndex = Math.min(Math.max(activeOptionIndex, 0), options.length - 1);
+    options.forEach((option, index) => {
+      const active = index === activeOptionIndex;
+      option.classList.toggle("active", active);
+      option.setAttribute("aria-selected", String(active));
+    });
+  }
+
+  function moveActiveOption(delta) {
+    const options = getOptionButtons();
+    if (options.length === 0) {
+      return;
+    }
+    activeOptionIndex = (activeOptionIndex + delta + options.length) % options.length;
+    syncActiveOption();
+    options[activeOptionIndex]?.scrollIntoView({ block: "nearest" });
+  }
+
+  function selectActiveOption(event) {
+    const options = getOptionButtons();
+    const option = options[activeOptionIndex] ?? options[0];
     event?.preventDefault?.();
-    if (firstOption) {
-      toggleTag(Number(firstOption.dataset.tagId));
+    if (!option) {
       return true;
     }
-    const createOption = elements.ticketTagOptions.querySelector("[data-create-tag-from-query]");
-    if (createOption) {
-      createTagByName(createOption.dataset.createTagFromQuery);
+    if (option.dataset.tagId) {
+      toggleTag(Number(option.dataset.tagId));
+      return true;
+    }
+    if (option.dataset.createTagFromQuery) {
+      createTagByName(option.dataset.createTagFromQuery);
       return true;
     }
     return true;
@@ -139,7 +180,7 @@ export function createTicketTagPicker(ctx) {
     state.tagQuery = "";
     elements.ticketTagSearch.value = "";
     syncOptions();
-    openOptions();
+    closeOptions();
     elements.ticketTagSearch.focus();
   }
 
@@ -176,7 +217,7 @@ export function createTicketTagPicker(ctx) {
     state.tagQuery = "";
     elements.ticketTagSearch.value = "";
     syncOptions();
-    openOptions();
+    closeOptions();
     ctx.showToast("Tag created");
   }
 
