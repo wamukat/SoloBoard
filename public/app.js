@@ -4,9 +4,13 @@ import { createEditorModule } from "./app-editor.js";
 import { createFiltersModule } from "./app-filters.js";
 import { createUxModule } from "./app-ux.js";
 
+const UI_PREFERENCES_KEY = "soloboard:ui-preferences";
+const DEFAULT_FILTERS = { q: "", lane: "", status: ["open"], priority: [], tag: "" };
+const storedPreferences = readUiPreferences();
+
 const state = {
   boards: [],
-  activeBoardId: null,
+  activeBoardId: storedPreferences.activeBoardId,
   boardDetail: null,
   boardTickets: [],
   boardEvents: null,
@@ -22,7 +26,7 @@ const state = {
   confirmingSidebarTagDeleteId: null,
   sidebarTagError: "",
   confirmingCommentDeleteId: null,
-  viewMode: "kanban",
+  viewMode: storedPreferences.viewMode,
   selectedListTicketIds: [],
   sidebarCollapsed: localStorage.getItem("soloboard:sidebar-collapsed") === "true",
   boardSettingsExpanded: false,
@@ -33,7 +37,7 @@ const state = {
     priority: [],
     tag: "",
   },
-  filtersByBoardId: {},
+  filtersByBoardId: storedPreferences.filtersByBoardId,
   editingTicketId: null,
   activeBoardDragId: null,
   activeLaneDragId: null,
@@ -55,6 +59,69 @@ const state = {
   uxDialogPosition: null,
   uxDialogDrag: null,
 };
+
+function readUiPreferences() {
+  try {
+    const raw = localStorage.getItem(UI_PREFERENCES_KEY);
+    if (!raw) {
+      return { activeBoardId: null, viewMode: "kanban", filtersByBoardId: {} };
+    }
+    const parsed = JSON.parse(raw);
+    return {
+      activeBoardId: Number.isInteger(parsed?.activeBoardId) && parsed.activeBoardId > 0 ? parsed.activeBoardId : null,
+      viewMode: parsed?.viewMode === "list" ? "list" : "kanban",
+      filtersByBoardId: normalizeStoredFiltersByBoard(parsed?.filtersByBoardId),
+    };
+  } catch {
+    return { activeBoardId: null, viewMode: "kanban", filtersByBoardId: {} };
+  }
+}
+
+function normalizeStoredFiltersByBoard(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([boardId]) => Number.isInteger(Number(boardId)) && Number(boardId) > 0)
+      .map(([boardId, filters]) => [String(boardId), normalizeStoredFilters(filters)]),
+  );
+}
+
+function normalizeStoredFilters(filters) {
+  const status = Array.isArray(filters?.status)
+    ? filters.status.filter((item) => ["open", "resolved", "archived"].includes(item))
+    : [];
+  const priority = Array.isArray(filters?.priority)
+    ? filters.priority.filter((item) => ["low", "medium", "high", "urgent"].includes(item))
+    : [];
+  return {
+    q: typeof filters?.q === "string" ? filters.q : DEFAULT_FILTERS.q,
+    lane: typeof filters?.lane === "string" ? filters.lane : DEFAULT_FILTERS.lane,
+    status: status.length ? [...new Set(status)] : [...DEFAULT_FILTERS.status],
+    priority: [...new Set(priority)],
+    tag: typeof filters?.tag === "string" ? filters.tag : DEFAULT_FILTERS.tag,
+  };
+}
+
+function persistUiPreferences() {
+  try {
+    localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({
+      activeBoardId: state.activeBoardId,
+      viewMode: state.viewMode,
+      filtersByBoardId: state.filtersByBoardId,
+    }));
+  } catch (error) {
+    console.warn("Failed to persist UI preferences", error);
+  }
+}
+
+function pruneUiPreferencesForBoards() {
+  const boardIds = new Set(state.boards.map((board) => String(board.id)));
+  state.filtersByBoardId = Object.fromEntries(
+    Object.entries(state.filtersByBoardId).filter(([boardId]) => boardIds.has(boardId)),
+  );
+}
 
 const elements = {
   shell: document.querySelector(".shell"),
@@ -454,9 +521,14 @@ function syncDialogScrollLock() {
 async function refreshBoards() {
   const data = await api("/api/boards");
   state.boards = data.boards;
+  pruneUiPreferencesForBoards();
   if (!state.activeBoardId && state.boards.length > 0) {
     state.activeBoardId = state.boards[0].id;
+  } else if (state.activeBoardId && !state.boards.some((board) => board.id === state.activeBoardId)) {
+    state.activeBoardId = state.boards[0]?.id ?? null;
   }
+  restoreBoardFilters(state.activeBoardId);
+  persistUiPreferences();
   renderBoards();
   await refreshBoardDetail();
 }
@@ -473,6 +545,7 @@ async function selectBoard(boardId) {
   restoreBoardFilters(boardId);
   await refreshBoardDetail();
   syncBoardUrl();
+  persistUiPreferences();
 }
 
 async function refreshBoardDetail() {
@@ -585,6 +658,7 @@ async function applyRouteFromLocation({ replace = false } = {}) {
       restoreBoardFilters(ticket.boardId);
       await refreshBoardDetail();
       await openEditor(ticket.id, "view");
+      persistUiPreferences();
       if (replace) {
         syncTicketUrl(ticket.id, { replace: true });
       }
@@ -601,6 +675,7 @@ async function applyRouteFromLocation({ replace = false } = {}) {
       state.viewMode = route.viewMode;
       restoreBoardFilters(route.id);
       await refreshBoardDetail();
+      persistUiPreferences();
       if (elements.editorDialog.open) {
         state.skipDialogCloseSync = true;
         elements.editorDialog.close();
@@ -621,6 +696,7 @@ async function applyRouteFromLocation({ replace = false } = {}) {
         : state.boards[0].id;
     restoreBoardFilters(state.activeBoardId);
     await refreshBoardDetail();
+    persistUiPreferences();
     if (elements.editorDialog.open) {
       state.skipDialogCloseSync = true;
       elements.editorDialog.close();
@@ -630,6 +706,7 @@ async function applyRouteFromLocation({ replace = false } = {}) {
   }
 
   state.activeBoardId = null;
+  persistUiPreferences();
   await refreshBoardDetail();
 }
 
@@ -648,6 +725,7 @@ function syncBoardUrl(replace = false) {
       ? `/boards/${state.activeBoardId}/list`
       : `/boards/${state.activeBoardId}`;
   setUrl(pathname, { replace });
+  persistUiPreferences();
 }
 
 function syncTicketUrl(ticketId, { replace = false } = {}) {
@@ -678,6 +756,7 @@ const { confirmAndRun, finishUxDialog, handleUxSubmit, showToast } = uxModule;
 const filtersModule = createFiltersModule(
   { state, elements },
   {
+    persistUiPreferences,
     refreshBoardDetail,
     showToast,
     syncBoardUrl,

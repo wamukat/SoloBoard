@@ -33,6 +33,7 @@ export function createFiltersModule(ctx, options) {
       return;
     }
     state.filtersByBoardId[String(boardId)] = cloneFilters(state.filters);
+    options.persistUiPreferences?.();
   }
 
   function restoreBoardFilters(boardId = state.activeBoardId) {
@@ -132,11 +133,13 @@ export function createFiltersModule(ctx, options) {
     });
     elements.searchInput.addEventListener("input", async (event) => {
       state.filters.q = event.target.value.trim();
+      saveBoardFilters();
       syncActiveFilterStyles();
       await options.refreshBoardDetail();
     });
     elements.laneFilter.addEventListener("change", async (event) => {
       state.filters.lane = event.target.value;
+      saveBoardFilters();
       syncActiveFilterStyles();
       await options.refreshBoardDetail();
     });
@@ -162,6 +165,7 @@ export function createFiltersModule(ctx, options) {
         if (state.filters.status.length === 0) {
           state.filters.status = ["open"];
         }
+        saveBoardFilters();
         syncStatusFilter();
         syncActiveFilterStyles();
         await options.refreshBoardDetail();
@@ -169,6 +173,7 @@ export function createFiltersModule(ctx, options) {
     });
     elements.statusFilterClearButton.addEventListener("click", async () => {
       state.filters.status = ["open"];
+      saveBoardFilters();
       syncStatusFilter();
       syncActiveFilterStyles();
       collapseFilter(elements.statusFilter, elements.statusFilterToggles, elements.statusFilterOptions);
@@ -183,6 +188,7 @@ export function createFiltersModule(ctx, options) {
         state.filters.priority = state.filters.priority.includes(value)
           ? state.filters.priority.filter((item) => item !== value)
           : [...state.filters.priority, value];
+        saveBoardFilters();
         syncPriorityFilter();
         syncActiveFilterStyles();
         await options.refreshBoardDetail();
@@ -190,6 +196,7 @@ export function createFiltersModule(ctx, options) {
     });
     elements.priorityFilterClearButton.addEventListener("click", async () => {
       state.filters.priority = [];
+      saveBoardFilters();
       syncPriorityFilter();
       syncActiveFilterStyles();
       collapseFilter(elements.priorityFilter, elements.priorityFilterToggles, elements.priorityFilterOptions);
@@ -197,6 +204,7 @@ export function createFiltersModule(ctx, options) {
     });
     elements.tagFilter.addEventListener("change", async (event) => {
       state.filters.tag = event.target.value;
+      saveBoardFilters();
       syncActiveFilterStyles();
       await options.refreshBoardDetail();
     });

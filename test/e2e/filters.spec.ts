@@ -374,3 +374,59 @@ test("ticket filters are preserved per board during the session", async ({ page 
     await app.close();
   }
 });
+
+
+test("last board view and filters restore from localStorage", async ({ page }) => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+  });
+  const port = await getFreePort();
+  await app.listen({ host: "127.0.0.1", port });
+
+  try {
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const firstBoardResponse = await page.request.post(`${baseUrl}/api/boards`, {
+      data: { name: "LocalStorage A", laneNames: ["todo"] },
+    });
+    expect(firstBoardResponse.status()).toBe(201);
+    const firstBoard = await firstBoardResponse.json();
+
+    const secondBoardResponse = await page.request.post(`${baseUrl}/api/boards`, {
+      data: { name: "LocalStorage B", laneNames: ["todo", "review"] },
+    });
+    expect(secondBoardResponse.status()).toBe(201);
+    const secondBoard = await secondBoardResponse.json();
+    const [todoLane, reviewLane] = secondBoard.lanes;
+
+    for (const ticket of [
+      { laneId: todoLane.id, title: "Persisted todo", priority: 2 },
+      { laneId: reviewLane.id, title: "Persisted review", priority: 2 },
+    ]) {
+      const response = await page.request.post(`${baseUrl}/api/boards/${secondBoard.board.id}/tickets`, { data: ticket });
+      expect(response.status()).toBe(201);
+    }
+
+    await page.goto(`${baseUrl}/boards/${firstBoard.board.id}`);
+    await page.locator("#board-list").getByRole("button", { name: "LocalStorage B" }).click();
+    await page.getByRole("button", { name: "List", exact: true }).click();
+    await page.locator("#search-input").fill("Persisted");
+    await page.locator("#lane-filter").selectOption(String(reviewLane.id));
+    await expect(page.locator(".list-row")).toHaveCount(1);
+    await expect(page.locator("#list-board")).toContainText("Persisted review");
+
+    await page.goto("about:blank");
+    await page.goto(baseUrl);
+
+    await expect(page).toHaveURL(`${baseUrl}/boards/${secondBoard.board.id}/list`);
+    await expect(page.locator("#board-title")).toHaveText("LocalStorage B");
+    await expect(page.locator("#search-input")).toHaveValue("Persisted");
+    await expect(page.locator("#lane-filter")).toBeVisible();
+    await expect(page.locator("#lane-filter")).toHaveValue(String(reviewLane.id));
+    await expect(page.locator(".list-row")).toHaveCount(1);
+    await expect(page.locator("#list-board")).toContainText("Persisted review");
+  } finally {
+    await page.close();
+    await app.close();
+  }
+});
