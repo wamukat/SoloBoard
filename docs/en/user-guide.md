@@ -4,6 +4,12 @@ SoloBoard is a lightweight kanban tool for personal work, small release planning
 
 This guide follows the order a new user can use to start working.
 
+## Quick Demo
+
+This short demo shows ticket creation with Markdown, creating and attaching a tag, drag and drop, search, filters, comments, and List view.
+
+![SoloBoard demo](../assets/soloboard-demo.gif)
+
 ## 1. Create Your First Board
 
 Click the `+` in the upper-left sidebar to show the board name input.
@@ -143,7 +149,7 @@ It follows the OS or browser color-scheme setting. When your system is in dark m
 docker run --rm \
   -p 3000:3000 \
   -v soloboard-data:/app/data \
-  ghcr.io/wamukat/soloboard:v0.9.12
+  ghcr.io/wamukat/soloboard:v0.9.13
 ```
 
 Open:

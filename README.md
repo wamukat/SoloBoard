@@ -12,6 +12,8 @@ You can start it quickly with Docker and use it right away. In addition to a bro
 
 ![SoloBoard kanban screenshot](docs/assets/soloboard-kanban.png)
 
+![SoloBoard demo showing ticket creation, tags, drag and drop, search, filters, comments, and list view](docs/assets/soloboard-demo.gif)
+
 ## Why SoloBoard
 
 - Optimized for one person and one machine working with AI, without user or permission management.
@@ -29,7 +31,7 @@ Run the published Docker image:
 docker run --rm \
   -p 3000:3000 \
   -v soloboard-data:/app/data \
-  ghcr.io/wamukat/soloboard:v0.9.12
+  ghcr.io/wamukat/soloboard:v0.9.13
 ```
 
 Open:

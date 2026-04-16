@@ -76,6 +76,7 @@
 }
 
 .toolbar-filters {
+  container: toolbar-filters / inline-size;
   display: flex;
   flex-wrap: wrap;
   align-items: center;

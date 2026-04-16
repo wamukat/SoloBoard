@@ -198,6 +198,7 @@ export function createFiltersModule(ctx, options) {
         saveBoardFilters();
         syncStatusFilter();
         syncActiveFilterStyles();
+        collapseFilterWhenToolbarIsTight(elements.statusFilter, elements.statusFilterToggles, elements.statusFilterOptions);
         await options.refreshBoardDetail();
       });
     });
@@ -222,6 +223,7 @@ export function createFiltersModule(ctx, options) {
         saveBoardFilters();
         syncPriorityFilter();
         syncActiveFilterStyles();
+        collapseFilterWhenToolbarIsTight(elements.priorityFilter, elements.priorityFilterToggles, elements.priorityFilterOptions);
         await options.refreshBoardDetail();
       });
     });
@@ -272,6 +274,15 @@ export function createFiltersModule(ctx, options) {
 
   function collapseFilter(filter, toggles, optionsElement) {
     syncFilterExpansion(filter, toggles, optionsElement, false);
+  }
+
+  function collapseFilterWhenToolbarIsTight(filter, toggles, optionsElement) {
+    const toolbarFilters = filter.closest(".toolbar-filters");
+    if (!toolbarFilters || toolbarFilters.getBoundingClientRect().width > 620) {
+      return;
+    }
+    collapseFilter(filter, toggles, optionsElement);
+    saveBoardFilterExpansion();
   }
 
   function isFilterExpanded(toggles) {

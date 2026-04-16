@@ -178,6 +178,7 @@
 }
 
 .toolbar-reset-filters {
+  flex: 0 0 auto;
   min-height: 2.45rem;
   margin-left: auto;
   padding: 0 0.75rem;
@@ -201,4 +202,28 @@
 .toolbar-reset-filters:hover {
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
   background: color-mix(in srgb, var(--accent) 11%, transparent);
+}
+
+@container toolbar-filters (max-width: 620px) {
+  #tag-filter {
+    width: 112px;
+  }
+
+  .toolbar-reset-filters {
+    width: 2.45rem;
+    min-width: 2.45rem;
+    padding: 0;
+  }
+
+  .toolbar-reset-filters span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 }

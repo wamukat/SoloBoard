@@ -135,6 +135,60 @@ test("sidebar toggle stays usable on narrow screens", async ({ page }) => {
   }
 });
 
+test("reset filters compacts in a constrained toolbar", async ({ page }) => {
+  await page.setViewportSize({ width: 980, height: 720 });
+  const { baseUrl, close } = await startTestApp(page);
+
+  try {
+    const boardPayload = await createBoard(page.request, baseUrl, {
+      name: "Compact Toolbar",
+      laneNames: ["todo"],
+    });
+    await createTicket(page.request, baseUrl, boardPayload.board.id, {
+      laneId: boardPayload.lanes[0].id,
+      title: "Compact ticket",
+      priority: 3,
+    });
+
+    await page.goto(`${baseUrl}/boards/${boardPayload.board.id}`);
+    await page.locator("#sidebar-toggle-button").click();
+    await page.locator("#priority-filter .filter-menu-edge-toggle").click();
+    await page.locator("#priority-filter [data-priority-filter='high']").click();
+    await expect(page.getByRole("button", { name: "Reset filters" })).toBeVisible();
+
+    const toolbarMetrics = await page.evaluate(() => {
+      const visibleControls = [
+        ...document.querySelectorAll(".toolbar-filters > *:not([hidden])"),
+      ];
+      const resetButton = document.querySelector("#reset-filters-button");
+      const resetLabel = resetButton?.querySelector("span");
+      const priorityFilter = document.querySelector("#priority-filter");
+      if (!resetButton || !resetLabel || !priorityFilter) {
+        throw new Error("Compact toolbar fixture is missing");
+      }
+      return {
+        rowCount: new Set(
+          visibleControls.map((control) =>
+            Math.round(control.getBoundingClientRect().top),
+          ),
+        ).size,
+        resetWidth: resetButton.getBoundingClientRect().width,
+        resetLabelPosition: getComputedStyle(resetLabel).position,
+        resetLabelWidth: resetLabel.getBoundingClientRect().width,
+        priorityExpanded: priorityFilter.classList.contains("is-expanded"),
+      };
+    });
+
+    expect(toolbarMetrics.rowCount).toBe(1);
+    expect(toolbarMetrics.resetWidth).toBeLessThan(42);
+    expect(toolbarMetrics.resetLabelPosition).toBe("absolute");
+    expect(toolbarMetrics.resetLabelWidth).toBeLessThanOrEqual(1);
+    expect(toolbarMetrics.priorityExpanded).toBe(false);
+  } finally {
+    await close();
+  }
+});
+
 test("native select filters use the shared toolbar color states", async ({
   page,
 }) => {
@@ -546,6 +600,7 @@ test("dark mode keeps key controls legible", async ({ browser }) => {
     await page.goto(`${baseUrl}/boards/${boardPayload.board.id}`);
     await expect(page.locator(".toolbar-search")).toBeVisible();
     await expect(page.locator("#priority-filter")).toBeVisible();
+    await expect(page.locator(".ticket-card")).toBeVisible();
 
     const darkControlStyles = await page.evaluate(() => {
       const search = document.querySelector(".toolbar-search");

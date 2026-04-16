@@ -13,6 +13,8 @@ Dockerでサクッと起動してすぐ使えます。
 
 ![SoloBoard kanban screenshot](docs/assets/soloboard-kanban.png)
 
+![チケット作成、タグ、ドラッグアンドドロップ、検索、フィルタ、コメント、リスト表示を操作する SoloBoard デモ](docs/assets/soloboard-demo.gif)
+
 ## SoloBoard の特徴
 
 - AI と共に 1 人で 1台のマシンで使うことに最適化し、ユーザ管理や権限管理は排除
@@ -30,7 +32,7 @@ Dockerでサクッと起動してすぐ使えます。
 docker run --rm \
   -p 3000:3000 \
   -v soloboard-data:/app/data \
-  ghcr.io/wamukat/soloboard:v0.9.12
+  ghcr.io/wamukat/soloboard:v0.9.13
 ```
 
 ブラウザで開きます。
