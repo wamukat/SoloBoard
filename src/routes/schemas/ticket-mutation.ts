@@ -1,4 +1,4 @@
-import { optionalPositiveIntegerArraySchema, positiveIntegerSchema } from "./common.js";
+import { optionalPositiveIntegerArraySchema, positiveIntegerSchema, ticketPrioritySchema } from "./common.js";
 
 export const ticketMutationBodySchema = {
   type: "object",
@@ -13,7 +13,7 @@ export const ticketMutationBodySchema = {
     isResolved: { type: "boolean" },
     isCompleted: { type: "boolean" },
     isArchived: { type: "boolean" },
-    priority: { type: "number" },
+    priority: ticketPrioritySchema,
     tagIds: optionalPositiveIntegerArraySchema,
     blockerIds: {
       anyOf: [optionalPositiveIntegerArraySchema, { type: "null" }],

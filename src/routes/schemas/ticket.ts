@@ -1,4 +1,4 @@
-import { positiveIntegerSchema } from "./common.js";
+import { positiveIntegerSchema, ticketPrioritySchema } from "./common.js";
 import { tagViewSchema } from "./tag.js";
 import { commentViewSchema } from "./ticket-comment.js";
 import { ticketRelationSchema } from "./ticket-relation.js";
@@ -42,7 +42,7 @@ export const ticketSchema = {
     isResolved: { type: "boolean" },
     isCompleted: { type: "boolean" },
     isArchived: { type: "boolean" },
-    priority: { type: "number" },
+    priority: ticketPrioritySchema,
     position: { type: "integer", minimum: 0 },
     createdAt: { type: "string" },
     updatedAt: { type: "string" },
@@ -106,7 +106,7 @@ export const ticketSummarySchema = {
     isResolved: { type: "boolean" },
     isCompleted: { type: "boolean" },
     isArchived: { type: "boolean" },
-    priority: { type: "number" },
+    priority: ticketPrioritySchema,
     position: { type: "integer", minimum: 0 },
     createdAt: { type: "string" },
     updatedAt: { type: "string" },

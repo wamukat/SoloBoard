@@ -1,4 +1,4 @@
-import { positiveIntegerSchema } from "./common.js";
+import { positiveIntegerSchema, ticketPrioritySchema } from "./common.js";
 
 export const ticketRelationSchema = {
   type: "object",
@@ -10,7 +10,7 @@ export const ticketRelationSchema = {
     laneId: positiveIntegerSchema,
     isResolved: { type: "boolean" },
     isCompleted: { type: "boolean" },
-    priority: { type: "number" },
+    priority: ticketPrioritySchema,
     ref: { type: "string" },
     shortRef: { type: "string" },
   },

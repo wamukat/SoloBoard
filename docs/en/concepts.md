@@ -15,7 +15,7 @@
 - `laneId` and `isResolved` are separate fields. In the UI, `isResolved` is shown as Resolved.
 - Archived tickets are hidden from board lists by default.
 - Tickets include canonical refs: `ref` and `shortRef`.
-- The UI shows priority as Low / Medium / High / Urgent. The internal API still stores numeric priority values, so automation can continue using numeric values.
+- The UI and API use the same priority scale: `1 = low`, `2 = medium`, `3 = high`, and `4 = urgent`.
 
 ## Relationships
 

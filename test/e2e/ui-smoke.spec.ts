@@ -42,10 +42,10 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     expect(ticketResponse.status()).toBe(201);
 
     const relationTickets = [
-      { title: "Parent candidate", priority: 8, isResolved: true },
-      { title: "Blocker candidate", priority: 7 },
-      { title: "Child candidate", priority: 6 },
-      { title: "Archived candidate", priority: 5, isArchived: true },
+      { title: "Parent candidate", priority: 4, isResolved: true },
+      { title: "Blocker candidate", priority: 3 },
+      { title: "Child candidate", priority: 2 },
+      { title: "Archived candidate", priority: 1, isArchived: true },
     ];
     for (const ticket of relationTickets) {
       const relationResponse = await page.request.post(`${baseUrl}/api/boards/${boardPayload.board.id}/tickets`, {

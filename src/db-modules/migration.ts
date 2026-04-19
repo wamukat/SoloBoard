@@ -41,7 +41,7 @@ export function migrate(sqlite: Database.Database): void {
       body_markdown TEXT NOT NULL DEFAULT '',
       is_resolved INTEGER NOT NULL DEFAULT 0,
       is_archived INTEGER NOT NULL DEFAULT 0,
-      priority INTEGER NOT NULL DEFAULT 0,
+      priority INTEGER NOT NULL DEFAULT 2,
       position INTEGER NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -109,8 +109,9 @@ export function migrate(sqlite: Database.Database): void {
     normalizeBoardPositions(sqlite);
   }
   if (!ticketColumns.some((column) => column.name === "priority")) {
-    sqlite.exec("ALTER TABLE tickets ADD COLUMN priority INTEGER NOT NULL DEFAULT 0");
+    sqlite.exec("ALTER TABLE tickets ADD COLUMN priority INTEGER NOT NULL DEFAULT 2");
   }
+  sqlite.exec("UPDATE tickets SET priority = 2 WHERE priority NOT IN (1, 2, 3, 4)");
   if (!ticketColumns.some((column) => column.name === "parent_ticket_id")) {
     sqlite.exec("ALTER TABLE tickets ADD COLUMN parent_ticket_id INTEGER REFERENCES tickets(id) ON DELETE SET NULL");
   }

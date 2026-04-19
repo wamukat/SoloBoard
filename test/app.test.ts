@@ -26,6 +26,31 @@ test("migration creates archive-aware ticket indexes", () => {
   }
 });
 
+test("migration normalizes ticket priorities to the API range", () => {
+  const dbFile = createDbFile();
+  const db = new KanbanDb(dbFile);
+  try {
+    const board = db.createBoard({ name: "Priority migration", laneNames: ["todo"] });
+    const ticket = db.createTicket({
+      boardId: board.board.id,
+      laneId: board.lanes[0].id,
+      title: "Out-of-range priority",
+      priority: 4,
+    });
+    db.sqlite.prepare("UPDATE tickets SET priority = 100 WHERE id = ?").run(ticket.id);
+  } finally {
+    db.close();
+  }
+
+  const migrated = new KanbanDb(dbFile);
+  try {
+    const ticket = migrated.sqlite.prepare("SELECT priority FROM tickets").get() as { priority: number };
+    assert.equal(ticket.priority, 2);
+  } finally {
+    migrated.close();
+  }
+});
+
 test("meta endpoint exposes app name and package version", async () => {
   const app = buildApp({
     dbFile: createDbFile(),
@@ -85,7 +110,7 @@ test("board lifecycle, ticket filters, reorder, and export/import", async () => 
       laneId: todoLane.id,
       title: "Fix parser",
       bodyMarkdown: "Needs **attention**",
-      priority: 5,
+      priority: 4,
       tagIds: [bugTag.id],
       isResolved: false,
     },
@@ -114,6 +139,19 @@ test("board lifecycle, ticket filters, reorder, and export/import", async () => 
   assert.equal(secondTicket.priority, 2);
   assert.equal(secondTicket.parentTicketId, firstTicket.id);
   assert.deepEqual(secondTicket.blockerIds, []);
+
+  for (const priority of [0, 100, 3.5]) {
+    const invalidPriorityCreateResponse = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/tickets`,
+      payload: {
+        laneId: todoLane.id,
+        title: `Invalid priority ${priority}`,
+        priority,
+      },
+    });
+    assert.equal(invalidPriorityCreateResponse.statusCode, 400);
+  }
 
   const boardShellResponse = await app.inject({
     method: "GET",
@@ -187,16 +225,25 @@ test("board lifecycle, ticket filters, reorder, and export/import", async () => 
   const updateResponse = await app.inject({
     method: "PATCH",
     url: `/api/tickets/${firstTicket.id}`,
-    payload: { laneId: doingLane.id, priority: 7, blockerIds: [secondTicket.id] },
+    payload: { laneId: doingLane.id, priority: 4, blockerIds: [secondTicket.id] },
   });
   assert.equal(updateResponse.statusCode, 200);
   assert.equal(updateResponse.json().laneId, doingLane.id);
   assert.equal(updateResponse.json().isResolved, false);
-  assert.equal(updateResponse.json().priority, 7);
+  assert.equal(updateResponse.json().priority, 4);
   assert.equal(updateResponse.json().children.length, 1);
   assert.deepEqual(updateResponse.json().blockerIds, [secondTicket.id]);
   assert.equal(updateResponse.json().ref, `Ops Board#${firstTicket.id}`);
   assert.equal(updateResponse.json().shortRef, `#${firstTicket.id}`);
+
+  for (const priority of [0, 100, 3.5]) {
+    const invalidPriorityUpdateResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/tickets/${firstTicket.id}`,
+      payload: { priority },
+    });
+    assert.equal(invalidPriorityUpdateResponse.statusCode, 400);
+  }
 
   const reorderResponse = await app.inject({
     method: "POST",
@@ -229,7 +276,7 @@ test("board lifecycle, ticket filters, reorder, and export/import", async () => 
   assert.equal(exported.tickets.length, 2);
   assert.ok(!("bodyHtml" in exported.tickets[0]));
   assert.equal(exported.tickets.find((ticket: { title: string }) => ticket.title === "Fix parser").comments.length, 1);
-  assert.equal(exported.tickets.find((ticket: { title: string }) => ticket.title === "Fix parser").priority, 7);
+  assert.equal(exported.tickets.find((ticket: { title: string }) => ticket.title === "Fix parser").priority, 4);
   assert.deepEqual(
     exported.tickets.find((ticket: { title: string }) => ticket.title === "Fix parser").blockerIds,
     [secondTicket.id],
@@ -249,7 +296,7 @@ test("board lifecycle, ticket filters, reorder, and export/import", async () => 
   assert.equal(imported.tags.length, 2);
   assert.equal(imported.tickets.length, 2);
   assert.equal(imported.tickets.find((ticket: { title: string }) => ticket.title === "Fix parser").comments.length, 1);
-  assert.equal(imported.tickets.find((ticket: { title: string }) => ticket.title === "Fix parser").priority, 7);
+  assert.equal(imported.tickets.find((ticket: { title: string }) => ticket.title === "Fix parser").priority, 4);
   assert.equal(imported.tickets.find((ticket: { title: string }) => ticket.title === "Fix parser").children.length, 1);
   assert.equal(imported.tickets.find((ticket: { title: string }) => ticket.title === "Write docs").parent?.title, "Fix parser");
   assert.equal(imported.tickets.find((ticket: { title: string }) => ticket.title === "Fix parser").blockerIds.length, 1);

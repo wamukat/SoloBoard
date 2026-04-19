@@ -344,7 +344,7 @@ export function createFiltersModule(ctx, options) {
     }
     return state.filters.priority.some((item) => {
       if (item === "urgent") {
-        return ticket.priority >= 4;
+        return ticket.priority === 4;
       }
       if (item === "high") {
         return ticket.priority === 3;

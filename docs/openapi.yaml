@@ -920,7 +920,10 @@ components:
           type: boolean
           deprecated: true
           description: Legacy alias for isResolved. Use isResolved for new clients.
-        priority: { type: integer }
+        priority:
+          type: integer
+          enum: [1, 2, 3, 4]
+          description: Ticket priority. 1 = low, 2 = medium, 3 = high, 4 = urgent.
         ref: { type: string }
         shortRef: { type: string }
       required: [id, title, laneId, isResolved, isCompleted, priority, ref, shortRef]
@@ -963,7 +966,10 @@ components:
           deprecated: true
           description: Legacy alias for isResolved. Use isResolved for new clients.
         isArchived: { type: boolean }
-        priority: { type: integer }
+        priority:
+          type: integer
+          enum: [1, 2, 3, 4]
+          description: Ticket priority. 1 = low, 2 = medium, 3 = high, 4 = urgent.
         position: { type: integer }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -1016,7 +1022,10 @@ components:
           deprecated: true
           description: Legacy alias for isResolved. Use isResolved for new clients.
         isArchived: { type: boolean }
-        priority: { type: integer }
+        priority:
+          type: integer
+          enum: [1, 2, 3, 4]
+          description: Ticket priority. 1 = low, 2 = medium, 3 = high, 4 = urgent.
         position: { type: integer }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -1048,7 +1057,10 @@ components:
           deprecated: true
           description: Legacy alias for isResolved. Use isResolved for new clients.
         isArchived: { type: boolean }
-        priority: { type: integer }
+        priority:
+          type: integer
+          enum: [1, 2, 3, 4]
+          description: Ticket priority. 1 = low, 2 = medium, 3 = high, 4 = urgent.
         tagIds:
           type: array
           items:

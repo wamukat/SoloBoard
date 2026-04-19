@@ -140,10 +140,13 @@ export function mapActivityLog(row: ActivityLogRow): ActivityLogView {
 }
 
 export function sanitizePriority(value: number | undefined): number {
-  if (typeof value !== "number" || Number.isNaN(value)) {
-    return 0;
+  if (typeof value === "undefined") {
+    return 2;
   }
-  return Math.trunc(value);
+  if (Number.isInteger(value) && value >= 1 && value <= 4) {
+    return value;
+  }
+  throw new Error("Priority must be 1, 2, 3, or 4");
 }
 
 export function mapRelation(

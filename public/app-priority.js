@@ -9,7 +9,7 @@ const PRIORITY_LEVELS = {
 
 export function getPriorityLevel(priority) {
   const normalizedPriority = Number(priority ?? 0);
-  if (normalizedPriority >= 4) {
+  if (normalizedPriority === 4) {
     return { key: "urgent", ...PRIORITY_LEVELS.urgent };
   }
   if (normalizedPriority === 3) {

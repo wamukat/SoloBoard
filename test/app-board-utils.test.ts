@@ -35,7 +35,7 @@ test("getListTickets keeps parent tickets before children and sorts high priorit
   const tickets = [
     { id: 4, priority: 3, parentTicketId: 99 },
     { id: 2, priority: 2, parentTicketId: 1 },
-    { id: 1, priority: 5, parentTicketId: null },
+    { id: 1, priority: 4, parentTicketId: null },
     { id: 3, priority: 1, parentTicketId: null },
   ];
 

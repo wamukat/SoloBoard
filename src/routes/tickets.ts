@@ -91,7 +91,7 @@ export function registerTicketRoutes(app: FastifyInstance, ctx: RegisterTicketRo
         bodyMarkdown: body.bodyMarkdown ?? "",
         isResolved: Boolean(resolveResolvedFlag(body)),
         isArchived: Boolean(body.isArchived),
-        priority: typeof body.priority === "number" ? body.priority : 0,
+        priority: typeof body.priority === "number" ? body.priority : 2,
         tagIds: Array.isArray(body.tagIds) ? body.tagIds : [],
         blockerIds: Array.isArray(body.blockerIds) ? body.blockerIds : [],
       });

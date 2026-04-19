@@ -41,7 +41,7 @@ test("ticket filters combine results and active styling", async ({ page }) => {
         isResolved: true,
         tagIds: [tag.id],
       },
-      { laneId: reviewLane.id, title: "Plain open", priority: 5 },
+      { laneId: reviewLane.id, title: "Plain open", priority: 4 },
       {
         laneId: todoLane.id,
         title: "Archived focus",

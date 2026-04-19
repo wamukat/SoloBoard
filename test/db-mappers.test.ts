@@ -32,9 +32,12 @@ test("mapActivityLog tolerates invalid details json", () => {
   assert.equal(activity.subjectTicketId, 3);
 });
 
-test("sanitizePriority normalizes invalid and decimal priorities", () => {
-  assert.equal(sanitizePriority(undefined), 0);
-  assert.equal(sanitizePriority(Number.NaN), 0);
-  assert.equal(sanitizePriority(3.9), 3);
-  assert.equal(sanitizePriority(-2.4), -2);
+test("sanitizePriority defaults missing priority and rejects out-of-range values", () => {
+  assert.equal(sanitizePriority(undefined), 2);
+  assert.equal(sanitizePriority(1), 1);
+  assert.equal(sanitizePriority(4), 4);
+  assert.throws(() => sanitizePriority(0), /Priority must be 1, 2, 3, or 4/);
+  assert.throws(() => sanitizePriority(Number.NaN), /Priority must be 1, 2, 3, or 4/);
+  assert.throws(() => sanitizePriority(3.9), /Priority must be 1, 2, 3, or 4/);
+  assert.throws(() => sanitizePriority(100), /Priority must be 1, 2, 3, or 4/);
 });

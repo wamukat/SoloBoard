@@ -103,7 +103,7 @@ export function createTicketDetailModule(ctx) {
   }
 
   function renderPrioritySelect(ticket) {
-    const value = String(ticket.priority >= 4 ? 4 : ticket.priority || 2);
+    const value = String(ticket.priority === 4 ? 4 : ticket.priority || 2);
     return `
       <select class="ticket-detail-select ticket-detail-priority-select" data-detail-priority-select aria-label="Priority">
         ${[

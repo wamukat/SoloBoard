@@ -134,27 +134,27 @@ test("ticket editor manages parent blocker and child relations", async ({ page }
     await createTicket(page.request, baseUrl, boardPayload.board.id, {
       laneId: lane.id,
       title: "Parent relation candidate",
-      priority: 8,
+      priority: 4,
     });
     await createTicket(page.request, baseUrl, boardPayload.board.id, {
       laneId: lane.id,
       title: "Parent relation alternate",
-      priority: 7,
+      priority: 3,
     });
     await createTicket(page.request, baseUrl, boardPayload.board.id, {
       laneId: lane.id,
       title: "Blocker relation candidate",
-      priority: 7,
+      priority: 3,
     });
     await createTicket(page.request, baseUrl, boardPayload.board.id, {
       laneId: lane.id,
       title: "Blocker relation alternate",
-      priority: 5,
+      priority: 1,
     });
     await createTicket(page.request, baseUrl, boardPayload.board.id, {
       laneId: lane.id,
       title: "Child relation candidate",
-      priority: 6,
+      priority: 2,
     });
     await createTag(page.request, baseUrl, boardPayload.board.id, {
       name: "Focus alpha",
