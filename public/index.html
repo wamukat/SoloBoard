@@ -215,7 +215,11 @@
           </section>
 
           <section id="comments-section" class="comments-section">
-            <form id="comment-form" class="comment-form">
+            <button id="comment-compose-toggle" type="button" class="ghost action-with-icon comment-compose-toggle" aria-expanded="false" aria-controls="comment-form">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="/icons.svg#plus"></use></svg>
+              <span>Add Comment</span>
+            </button>
+            <form id="comment-form" class="comment-form" hidden>
               <label>
                 Add Comment
                 <textarea id="comment-body" rows="5"></textarea>

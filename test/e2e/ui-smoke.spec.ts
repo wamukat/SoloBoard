@@ -284,6 +284,11 @@ test("board renders and ticket dialog actions are wired", async ({ page }) => {
     await page.locator("#header-edit-button").focus();
     await expect(page.locator("#header-edit-button")).toHaveCSS("outline-style", "none");
     await expect(page.locator("#header-edit-button")).not.toHaveCSS("box-shadow", "none");
+    await expect(page.locator("#comment-form")).toBeHidden();
+    await expect(page.locator("#comment-compose-toggle")).toHaveAttribute("aria-expanded", "false");
+    await page.locator("#comment-compose-toggle").click();
+    await expect(page.locator("#comment-form")).toBeVisible();
+    await expect(page.locator("#comment-compose-toggle")).toHaveAttribute("aria-expanded", "true");
     await expect(page.locator("#save-comment-button")).toHaveClass(/primary-action/);
     const commentFormBeforeList = await page.locator("#comment-form").evaluate((form) => {
       const list = document.querySelector("#ticket-comments");

@@ -3,6 +3,37 @@ import { icon } from "./icons.js";
 export function createTicketCommentsModule(ctx) {
   const { state, elements } = ctx;
   let commentStateTimer = null;
+  let isCommentComposerOpen = false;
+
+  function syncCommentComposer() {
+    if (!elements.commentForm || !elements.commentComposeToggle) {
+      return;
+    }
+    elements.commentForm.hidden = !isCommentComposerOpen;
+    elements.commentComposeToggle.setAttribute("aria-expanded", String(isCommentComposerOpen));
+    elements.commentComposeToggle.innerHTML = isCommentComposerOpen
+      ? `${icon("x")}<span>Hide Comment Form</span>`
+      : `${icon("plus")}<span>Add Comment</span>`;
+    ctx.syncDialogScrollLock?.();
+  }
+
+  function toggleCommentComposer() {
+    isCommentComposerOpen = !isCommentComposerOpen;
+    if (!isCommentComposerOpen) {
+      clearCommentState();
+    }
+    syncCommentComposer();
+    if (isCommentComposerOpen) {
+      queueMicrotask(() => elements.commentBody?.focus());
+    }
+  }
+
+  function resetCommentComposer() {
+    isCommentComposerOpen = false;
+    elements.commentBody.value = "";
+    clearCommentState();
+    syncCommentComposer();
+  }
 
   function clearCommentState() {
     if (commentStateTimer) {
@@ -286,5 +317,7 @@ export function createTicketCommentsModule(ctx) {
     clearCommentState,
     handleCommentAction,
     renderComments,
+    resetCommentComposer,
+    toggleCommentComposer,
   };
 }

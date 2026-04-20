@@ -288,6 +288,7 @@ const elements = {
   activitySection: document.querySelector("#activity-section"),
   ticketComments: document.querySelector("#ticket-comments"),
   ticketActivity: document.querySelector("#ticket-activity"),
+  commentComposeToggle: document.querySelector("#comment-compose-toggle"),
   commentForm: document.querySelector("#comment-form"),
   commentBody: document.querySelector("#comment-body"),
   commentSaveState: document.querySelector("#comment-save-state"),
@@ -374,6 +375,7 @@ function bindEvents() {
   bindFilterEvents();
   elements.editorForm.addEventListener("submit", saveTicket);
   elements.commentForm.addEventListener("submit", addComment);
+  elements.commentComposeToggle.addEventListener("click", toggleCommentComposer);
   elements.saveCommentButton.addEventListener("click", addComment);
   elements.ticketComments.addEventListener("click", handleCommentAction);
   elements.editorHeader.addEventListener("click", handleDetailClick);
@@ -927,6 +929,7 @@ const editorModule = createEditorModule({
 const {
   addComment,
   handleCommentAction,
+  toggleCommentComposer,
   closeEditor,
   deleteTicket,
   moveTicketToBoard,

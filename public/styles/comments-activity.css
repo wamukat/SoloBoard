@@ -8,6 +8,10 @@
   align-content: start;
 }
 
+.comment-compose-toggle {
+  justify-self: start;
+}
+
 .activity-section {
   min-height: 320px;
   overflow: visible;

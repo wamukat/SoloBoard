@@ -93,6 +93,7 @@ export function createEditorModule(ctx) {
     state.blockerQuery = "";
     state.childQuery = "";
     detailModule.setDetailTab("comments");
+    commentsModule.resetCommentComposer();
   }
 
   function handleEditorDialogClose() {
@@ -193,13 +194,13 @@ export function createEditorModule(ctx) {
     detailModule.syncTicketDetail(ticket, activity);
     elements.ticketComments.innerHTML = commentsModule.renderComments(ticket?.comments ?? []);
     elements.commentBody.value = "";
+    commentsModule.resetCommentComposer();
     const selectedLaneId = ticket?.laneId ?? defaultLaneId;
     elements.ticketLane.innerHTML = state.boardDetail.lanes
       .map((lane) => `<option value="${lane.id}" ${selectedLaneId === lane.id ? "selected" : ""}>${ctx.escapeHtml(lane.name)}</option>`)
       .join("");
     elements.ticketParent.value = ticket?.parentTicketId == null ? "" : String(ticket.parentTicketId);
     elements.deleteTicketButton.hidden = !ticketId;
-    elements.commentForm.hidden = !ticketId;
     elements.ticketResolvedRow.hidden = !ticketId;
     elements.archiveTicketButton.hidden = !ticketId;
     if (!ticketId && defaultLaneId != null) {
@@ -285,6 +286,7 @@ export function createEditorModule(ctx) {
     deleteTicket,
     moveTicketToBoard,
     handleCommentAction: commentsModule.handleCommentAction,
+    toggleCommentComposer: commentsModule.toggleCommentComposer,
     handleBlockerFieldClick: relationsModule.handleBlockerFieldClick,
     handleBlockerSearchInput: relationsModule.handleBlockerSearchInput,
     handleBlockerSearchKeydown: relationsModule.handleBlockerSearchKeydown,
