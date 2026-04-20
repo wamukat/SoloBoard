@@ -20,6 +20,11 @@ export type TicketTransitionBody = {
   isCompleted?: boolean;
 };
 
+export type TicketMoveBody = {
+  boardId?: number;
+  laneId?: number;
+};
+
 export type TicketRoutesSchemas = {
   activityLogsResponseSchema: unknown;
   bulkArchiveTicketsBodySchema: unknown;
@@ -34,6 +39,7 @@ export type TicketRoutesSchemas = {
   ticketCommentUpdateBodySchema: unknown;
   ticketCreateBodySchema: unknown;
   ticketListQuerySchema: unknown;
+  ticketMoveBodySchema: unknown;
   ticketRelationsSchema: unknown;
   ticketSchema: unknown;
   ticketsResponseSchema: unknown;

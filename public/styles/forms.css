@@ -2,7 +2,8 @@
 .toolbar select,
 .editor-form input,
 .editor-form select,
-.ux-fields input {
+.ux-fields input,
+.ux-fields select {
   width: 100%;
   border: 1px solid var(--control-border);
   border-radius: var(--radius-control);
@@ -51,6 +52,7 @@
 .editor-form textarea:focus,
 .comment-form textarea:focus,
 .ux-fields input:focus,
+.ux-fields select:focus,
 .ux-fields textarea:focus {
   border-color: var(--control-focus-border);
   box-shadow: var(--control-focus-ring);

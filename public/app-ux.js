@@ -41,6 +41,25 @@ export function createUxModule(ctx) {
     });
   }
 
+  function openFormDialog({ title, message = "", fields = "", submitLabel = "Save" }) {
+    return new Promise((resolve) => {
+      state.uxResolver = resolve;
+      elements.uxTitle.textContent = title;
+      elements.uxMessage.hidden = !message;
+      elements.uxMessage.textContent = message;
+      elements.uxSubmitButton.textContent = submitLabel;
+      elements.uxSubmitButton.classList.remove("danger");
+      elements.uxSubmitButton.classList.remove("action-with-icon");
+      elements.uxSubmitButton.classList.remove("danger-confirm-action");
+      elements.uxSubmitButton.classList.add("primary-action");
+      elements.uxError.hidden = true;
+      elements.uxFields.innerHTML = fields;
+      elements.uxDialog.showModal();
+      ctx.prepareUxDialogPosition?.();
+      ctx.syncDialogScrollLock?.();
+    });
+  }
+
   function renderConfirmMessage(message, details, warning) {
     return [
       message ? `<span>${ctx.escapeHtml(message)}</span>` : "",
@@ -69,6 +88,7 @@ export function createUxModule(ctx) {
     confirmAndRun,
     finishUxDialog,
     handleUxSubmit,
+    openFormDialog,
     showToast,
   };
 }

@@ -42,6 +42,16 @@ export const ticketTransitionBodySchema = {
   },
 } as const;
 
+export const ticketMoveBodySchema = {
+  type: "object",
+  required: ["boardId", "laneId"],
+  additionalProperties: false,
+  properties: {
+    boardId: positiveIntegerSchema,
+    laneId: positiveIntegerSchema,
+  },
+} as const;
+
 export const ticketListQuerySchema = {
   type: "object",
   additionalProperties: false,

@@ -153,9 +153,101 @@ export function createTicketActionsModule(ctx, options) {
     });
   }
 
+  async function moveTicketToBoard() {
+    if (!state.editingTicketId || !state.dialogTicket) {
+      return;
+    }
+    const targetBoards = state.boards.filter((board) => board.id !== state.dialogTicket.boardId);
+    if (targetBoards.length === 0) {
+      ctx.showToast("Create another board before moving tickets", "error");
+      return;
+    }
+
+    const initialBoardId = targetBoards[0].id;
+    const initialBoard = await ctx.api(`/api/boards/${initialBoardId}`);
+    const sourceLane = state.boardDetail?.lanes.find((lane) => lane.id === state.dialogTicket.laneId);
+    const initialLaneId = getDefaultTargetLaneId(initialBoard.lanes, sourceLane?.name);
+    const dialogPromise = ctx.openFormDialog({
+      title: "Move Ticket",
+      message: "Move this ticket to another board. Matching tag names will be kept. Parent, child, and blocker links outside the destination board will be cleared.",
+      fields: renderMoveFields(state.boards, state.dialogTicket.boardId, initialBoard.lanes, initialLaneId),
+      submitLabel: "Move",
+    });
+    const boardSelect = elements.uxFields.querySelector("[data-move-board]");
+    const laneSelect = elements.uxFields.querySelector("[data-move-lane]");
+    boardSelect?.addEventListener("change", async () => {
+      try {
+        const board = await ctx.api(`/api/boards/${Number(boardSelect.value)}`);
+        laneSelect.innerHTML = renderLaneOptions(board.lanes, getDefaultTargetLaneId(board.lanes, sourceLane?.name));
+      } catch (error) {
+        ctx.showToast(error.message, "error");
+      }
+    });
+
+    const confirmed = await dialogPromise;
+    if (!confirmed) {
+      return;
+    }
+
+    const boardId = Number(boardSelect?.value);
+    const laneId = Number(laneSelect?.value);
+    if (!Number.isInteger(boardId) || !Number.isInteger(laneId)) {
+      ctx.showToast("Choose a destination board and lane", "error");
+      return;
+    }
+
+    try {
+      setSaveState("saving", "Moving...");
+      const moved = await ctx.sendJson(`/api/tickets/${state.editingTicketId}/move`, {
+        method: "POST",
+        body: { boardId, laneId },
+      });
+      state.activeBoardId = moved.boardId;
+      await ctx.refreshBoardDetail();
+      await options.refreshDialogTicket(moved.id);
+      ctx.syncTicketUrl(moved.id);
+      setSaveState("saved", "Moved");
+      ctx.showToast("Ticket moved");
+    } catch (error) {
+      setSaveState("error", "Move failed");
+      ctx.showToast(error.message, "error");
+    }
+  }
+
+  function renderMoveFields(boards, currentBoardId, lanes, selectedLaneId) {
+    return `
+      <label class="editor-field">
+        <span class="editor-field-label">Board</span>
+        <select data-move-board>
+          ${boards
+            .filter((board) => board.id !== currentBoardId)
+            .map((board) => `<option value="${board.id}">${ctx.escapeHtml(board.name)}</option>`)
+            .join("")}
+        </select>
+      </label>
+      <label class="editor-field">
+        <span class="editor-field-label">Lane</span>
+        <select data-move-lane>
+          ${renderLaneOptions(lanes, selectedLaneId)}
+        </select>
+      </label>
+    `;
+  }
+
+  function renderLaneOptions(lanes, selectedLaneId) {
+    return lanes
+      .map((lane) => `<option value="${lane.id}" ${lane.id === selectedLaneId ? "selected" : ""}>${ctx.escapeHtml(lane.name)}</option>`)
+      .join("");
+  }
+
+  function getDefaultTargetLaneId(lanes, sourceLaneName) {
+    return lanes.find((lane) => lane.name === sourceLaneName)?.id ?? lanes[0]?.id ?? null;
+  }
+
   return {
     clearSaveState,
     deleteTicket,
+    moveTicketToBoard,
     saveTicket,
     setSaveState,
     toggleTicketArchive,

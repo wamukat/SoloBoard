@@ -684,6 +684,37 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
+  /api/tickets/{ticketId}/move:
+    post:
+      summary: Move ticket to another board and lane
+      description: Moves one ticket to the target board and lane. When the target board differs from the source board, matching tag names are preserved and parent, child, and blocker links are cleared so relations do not cross boards.
+      operationId: moveTicket
+      parameters:
+        - $ref: "#/components/parameters/TicketId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                boardId:
+                  type: integer
+                laneId:
+                  type: integer
+              required: [boardId, laneId]
+      responses:
+        "200":
+          description: Moved ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
 
   /api/tickets/{ticketId}/relations:
     get:

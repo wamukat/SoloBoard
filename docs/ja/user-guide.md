@@ -70,6 +70,8 @@ Relations では、ブロッカーや親チケットを設定できます。
 
 Relations では、ブロッカー、親チケット、子チケットを編集できます。
 
+詳細画面の `Move` で、チケットを別の board / lane へ移動できます。同名 tag は保持されます。別 board へ移動する場合、親子関係と blocker は解除されます。
+
 ![Ticket edit relations](../assets/user-guide/07-ticket-edit-relations.png)
 
 ## 7. コメントと履歴を見る

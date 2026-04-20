@@ -7,6 +7,7 @@ import { registerTicketRelationRoutes } from "./ticket-relations.js";
 import { registerTicketReorderRoutes } from "./ticket-reorder.js";
 import type {
   RegisterTicketRoutesContext,
+  TicketMoveBody,
   TicketMutationBody,
   TicketTransitionBody,
 } from "./ticket-route-context.js";
@@ -185,6 +186,40 @@ export function registerTicketRoutes(app: FastifyInstance, ctx: RegisterTicketRo
     } catch (error) {
       const message = error instanceof Error ? error.message : "ticket transition failed";
       const code = message === "Ticket not found" ? 404 : 400;
+      return reply.code(code).send({ error: message.toLowerCase() });
+    }
+  });
+
+  app.post("/api/tickets/:ticketId/move", {
+    schema: {
+      params: schemas.idParamsSchema("ticketId"),
+      body: schemas.ticketMoveBodySchema,
+      response: {
+        200: schemas.ticketSchema,
+        400: schemas.errorSchema,
+        404: schemas.errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const ticketId = getIdParam(request.params, "ticketId");
+    const body = request.body as TicketMoveBody;
+    const current = db.getTicket(ticketId);
+    if (!current) {
+      return reply.code(404).send({ error: "ticket not found" });
+    }
+    try {
+      const ticket = db.moveTicket(ticketId, {
+        boardId: Number(body.boardId),
+        laneId: Number(body.laneId),
+      });
+      publishBoardEvent(current.boardId);
+      if (ticket.boardId !== current.boardId) {
+        publishBoardEvent(ticket.boardId);
+      }
+      return serializeTicket(ticket);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "ticket move failed";
+      const code = message === "Board not found" ? 404 : 400;
       return reply.code(code).send({ error: message.toLowerCase() });
     }
   });

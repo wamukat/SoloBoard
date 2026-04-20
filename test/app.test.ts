@@ -607,6 +607,110 @@ test("ticket delete activity is retained after ticket removal", () => {
   db.close();
 });
 
+test("tickets can move between boards with safe tag and relation cleanup", async () => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+  });
+
+  try {
+    const sourceBoard = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Move Source", laneNames: ["todo", "done"] },
+    })).json();
+    const targetBoard = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Move Target", laneNames: ["todo", "done"] },
+    })).json();
+    const sourceLane = sourceBoard.lanes[0];
+    const targetLane = targetBoard.lanes[1];
+
+    const keepSourceTag = (await app.inject({
+      method: "POST",
+      url: `/api/boards/${sourceBoard.board.id}/tags`,
+      payload: { name: "keep", color: "#111111" },
+    })).json();
+    const dropSourceTag = (await app.inject({
+      method: "POST",
+      url: `/api/boards/${sourceBoard.board.id}/tags`,
+      payload: { name: "drop", color: "#222222" },
+    })).json();
+    const keepTargetTag = (await app.inject({
+      method: "POST",
+      url: `/api/boards/${targetBoard.board.id}/tags`,
+      payload: { name: "keep", color: "#333333" },
+    })).json();
+
+    const movingTicket = (await app.inject({
+      method: "POST",
+      url: `/api/boards/${sourceBoard.board.id}/tickets`,
+      payload: {
+        laneId: sourceLane.id,
+        title: "Move me",
+        bodyMarkdown: "Keep this body",
+        priority: 4,
+        tagIds: [keepSourceTag.id, dropSourceTag.id],
+      },
+    })).json();
+    const childTicket = (await app.inject({
+      method: "POST",
+      url: `/api/boards/${sourceBoard.board.id}/tickets`,
+      payload: { laneId: sourceLane.id, title: "Child", parentTicketId: movingTicket.id },
+    })).json();
+    const blockerTicket = (await app.inject({
+      method: "POST",
+      url: `/api/boards/${sourceBoard.board.id}/tickets`,
+      payload: { laneId: sourceLane.id, title: "Blocker" },
+    })).json();
+    const blockedTicket = (await app.inject({
+      method: "POST",
+      url: `/api/boards/${sourceBoard.board.id}/tickets`,
+      payload: { laneId: sourceLane.id, title: "Blocked", blockerIds: [movingTicket.id] },
+    })).json();
+
+    const updateBlockerResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/tickets/${movingTicket.id}`,
+      payload: { blockerIds: [blockerTicket.id] },
+    });
+    assert.equal(updateBlockerResponse.statusCode, 200);
+
+    const invalidMoveResponse = await app.inject({
+      method: "POST",
+      url: `/api/tickets/${movingTicket.id}/move`,
+      payload: { boardId: targetBoard.board.id, laneId: sourceLane.id },
+    });
+    assert.equal(invalidMoveResponse.statusCode, 400);
+
+    const moveResponse = await app.inject({
+      method: "POST",
+      url: `/api/tickets/${movingTicket.id}/move`,
+      payload: { boardId: targetBoard.board.id, laneId: targetLane.id },
+    });
+    assert.equal(moveResponse.statusCode, 200);
+    assert.equal(moveResponse.json().boardId, targetBoard.board.id);
+    assert.equal(moveResponse.json().laneId, targetLane.id);
+    assert.equal(moveResponse.json().bodyMarkdown, "Keep this body");
+    assert.equal(moveResponse.json().priority, 4);
+    assert.deepEqual(moveResponse.json().tags.map((tag: { id: number }) => tag.id), [keepTargetTag.id]);
+    assert.deepEqual(moveResponse.json().blockerIds, []);
+    assert.equal(moveResponse.json().children.length, 0);
+    assert.equal(moveResponse.json().ref, `Move Target#${movingTicket.id}`);
+
+    const childAfterMove = (await app.inject({ method: "GET", url: `/api/tickets/${childTicket.id}` })).json();
+    assert.equal(childAfterMove.parentTicketId, null);
+    const blockedAfterMove = (await app.inject({ method: "GET", url: `/api/tickets/${blockedTicket.id}` })).json();
+    assert.deepEqual(blockedAfterMove.blockerIds, []);
+    const activity = (await app.inject({ method: "GET", url: `/api/tickets/${movingTicket.id}/activity` })).json();
+    assert.equal(activity.activity.some((entry: { action: string; message: string }) =>
+      entry.action === "ticket_moved_board" && entry.message === "Moved to Move Target / done"), true);
+  } finally {
+    await app.close();
+  }
+});
+
 test("deleted ticket activity remains available through the API", async () => {
   const app = buildApp({
     dbFile: createDbFile(),

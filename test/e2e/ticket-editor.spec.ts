@@ -118,6 +118,50 @@ test("ticket editor creates updates archives restores and deletes tickets", asyn
   }
 });
 
+test("ticket detail moves a ticket to another board", async ({ page }) => {
+  const { baseUrl, close } = await startTestApp(page);
+
+  try {
+    const sourceBoard = await createBoard(page.request, baseUrl, {
+      name: "Move Source Board",
+      laneNames: ["Todo", "Done"],
+    });
+    const targetBoard = await createBoard(page.request, baseUrl, {
+      name: "Move Target Board",
+      laneNames: ["Todo", "Done"],
+    });
+    const ticket = await createTicket(page.request, baseUrl, sourceBoard.board.id, {
+      laneId: sourceBoard.lanes[0].id,
+      title: "Move through detail",
+      priority: 3,
+    });
+
+    await page.goto(`${baseUrl}/tickets/${ticket.id}`);
+    await expect(page.locator("#editor-dialog")).toHaveJSProperty("open", true);
+    await expect(page.locator("#move-ticket-button")).toBeHidden();
+    await page.locator("#header-edit-button").click();
+    await expect(page.locator("#move-ticket-button")).toBeVisible();
+    await page.locator("#move-ticket-button").click();
+    await expect(page.locator("#ux-dialog")).toHaveJSProperty("open", true);
+    await expect(page.locator("#ux-title")).toHaveText("Move Ticket");
+    await page.locator("[data-move-board]").selectOption(String(targetBoard.board.id));
+    await expect(page.locator("[data-move-lane]")).toContainText("Todo");
+    await page.locator("[data-move-lane]").selectOption(String(targetBoard.lanes[1].id));
+    const moveResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/tickets/${ticket.id}/move`) &&
+        response.request().method() === "POST",
+    );
+    await page.locator("#ux-submit-button").click();
+    expect((await moveResponse).status()).toBe(200);
+    await expect(page.locator("#editor-header-title")).toContainText("Move through detail");
+    await expect(page.locator("#board-title")).toHaveText("Move Target Board");
+    await expect(page.locator(".lane", { has: page.locator(".lane-title", { hasText: "Done" }) })).toContainText("Move through detail");
+  } finally {
+    await close();
+  }
+});
+
 test("ticket editor manages parent blocker and child relations", async ({ page }) => {
   const { baseUrl, close } = await startTestApp(page);
 

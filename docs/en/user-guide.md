@@ -70,6 +70,8 @@ You can change Lane / Priority / Resolved, Tags, Relations, and the body.
 
 Relations let you edit blockers, parent tickets, and child tickets.
 
+Use `Move` in the detail view to move a ticket to another board and lane. Matching tag names are kept. Parent, child, and blocker links are cleared when the ticket moves to another board.
+
 ![Ticket edit relations](../assets/user-guide/07-ticket-edit-relations.png)
 
 ## 7. Use Comments And Activity

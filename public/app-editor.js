@@ -39,6 +39,7 @@ export function createEditorModule(ctx) {
   const {
     clearSaveState,
     deleteTicket,
+    moveTicketToBoard,
     saveTicket,
     setSaveState,
     toggleTicketArchive,
@@ -69,6 +70,7 @@ export function createEditorModule(ctx) {
       detailModule.syncEditorHeader(state.dialogTicket);
     }
     elements.archiveTicketButton.hidden = mode !== "edit" || !state.editingTicketId;
+    elements.moveTicketButton.hidden = mode !== "edit" || !state.editingTicketId || state.boards.length < 2;
     elements.commentsTabButton.hidden = mode !== "view";
     elements.activityTabButton.hidden = mode !== "view";
     if (mode !== "edit") {
@@ -281,6 +283,7 @@ export function createEditorModule(ctx) {
     addComment: commentsModule.addComment,
     closeEditor,
     deleteTicket,
+    moveTicketToBoard,
     handleCommentAction: commentsModule.handleCommentAction,
     handleBlockerFieldClick: relationsModule.handleBlockerFieldClick,
     handleBlockerSearchInput: relationsModule.handleBlockerSearchInput,

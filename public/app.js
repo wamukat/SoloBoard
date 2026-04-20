@@ -275,6 +275,7 @@ const elements = {
   editorHeaderPriority: document.querySelector("#editor-header-priority"),
   editorSaveState: document.querySelector("#editor-save-state"),
   archiveTicketButton: document.querySelector("#archive-ticket-button"),
+  moveTicketButton: document.querySelector("#move-ticket-button"),
   headerEditButton: document.querySelector("#header-edit-button"),
   ticketView: document.querySelector("#ticket-view"),
   editorForm: document.querySelector("#editor-form"),
@@ -389,6 +390,7 @@ function bindEvents() {
   elements.uxForm.addEventListener("submit", handleUxSubmit);
   elements.deleteTicketButton.addEventListener("click", deleteTicket);
   elements.archiveTicketButton.addEventListener("click", toggleTicketArchive);
+  elements.moveTicketButton.addEventListener("click", moveTicketToBoard);
   elements.headerEditButton.addEventListener("click", () => setDialogMode("edit"));
   elements.cancelEditButton.addEventListener("click", () => {
     if (state.editingTicketId) {
@@ -878,7 +880,7 @@ const uxModule = createUxModule({
   escapeHtml,
 });
 
-const { confirmAndRun, finishUxDialog, handleUxSubmit, showToast } = uxModule;
+const { confirmAndRun, finishUxDialog, handleUxSubmit, openFormDialog, showToast } = uxModule;
 
 const filtersModule = createFiltersModule(
   { state, elements },
@@ -912,6 +914,7 @@ const editorModule = createEditorModule({
   confirmAndRun,
   escapeHtml,
   ensureEditorDialogPosition,
+  openFormDialog,
   prepareEditorDialogPosition,
   refreshBoardDetail,
   sendJson,
@@ -926,6 +929,7 @@ const {
   handleCommentAction,
   closeEditor,
   deleteTicket,
+  moveTicketToBoard,
   handleBlockerFieldClick,
   handleBlockerSearchInput,
   handleBlockerSearchKeydown,
