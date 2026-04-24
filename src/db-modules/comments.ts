@@ -98,6 +98,9 @@ export function updateComment(
   if (sync?.status === "pushed") {
     throw new Error("Pushed comments are read-only");
   }
+  if (sync?.status === "pushing") {
+    throw new Error("Comments being pushed are read-only");
+  }
   sqlite
     .prepare("UPDATE comments SET body_markdown = ? WHERE id = ?")
     .run(input.bodyMarkdown, input.commentId);
@@ -140,6 +143,9 @@ export function deleteComment(sqlite: Database.Database, commentId: Id, now: str
   const sync = getCommentRemoteSync(sqlite, current.id);
   if (sync?.status === "pushed") {
     throw new Error("Pushed comments cannot be deleted");
+  }
+  if (sync?.status === "pushing") {
+    throw new Error("Comments being pushed cannot be deleted");
   }
   sqlite.prepare("DELETE FROM comments WHERE id = ?").run(commentId);
   insertActivity(sqlite, {

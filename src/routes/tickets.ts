@@ -5,6 +5,7 @@ import { registerTicketBulkRoutes } from "./ticket-bulk.js";
 import { registerTicketCommentRoutes } from "./ticket-comments.js";
 import { registerTicketRelationRoutes } from "./ticket-relations.js";
 import { registerTicketReorderRoutes } from "./ticket-reorder.js";
+import { sanitizeRemoteRefreshError } from "../remote/errors.js";
 import type {
   RegisterTicketRoutesContext,
   TicketMoveBody,
@@ -153,6 +154,17 @@ export function registerTicketRoutes(app: FastifyInstance, ctx: RegisterTicketRo
         snapshot.projectKey !== remote.projectKey ||
         snapshot.issueKey !== remote.issueKey
       ) {
+        db.addTicketActivity({
+          boardId: ticket.boardId,
+          ticketId,
+          action: "remote_refresh_failed",
+          message: "Remote issue refresh failed",
+          details: {
+            provider: remote.provider,
+            displayRef: remote.displayRef,
+            error: "remote refresh returned a different issue",
+          },
+        });
         return reply.code(400).send({ error: "remote refresh returned a different issue" });
       }
       const updated = db.refreshTrackedTicketFromRemote(ticketId, {
@@ -169,12 +181,33 @@ export function registerTicketRoutes(app: FastifyInstance, ctx: RegisterTicketRo
         state: snapshot.state,
         updatedAt: snapshot.updatedAt,
         lastSyncedAt: new Date().toISOString(),
+      }, {
+        boardId: ticket.boardId,
+        action: "remote_refreshed",
+        message: "Remote issue refreshed",
+        details: {
+          provider: snapshot.provider,
+          displayRef: snapshot.displayRef,
+          state: snapshot.state,
+          remoteUpdatedAt: snapshot.updatedAt,
+        },
       });
       publishBoardEvent(updated.boardId);
       return serializeTicket(updated);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "remote refresh failed";
-      return reply.code(400).send({ error: message.toLowerCase() });
+      const message = sanitizeRemoteRefreshError(error);
+      db.addTicketActivity({
+        boardId: ticket.boardId,
+        ticketId,
+        action: "remote_refresh_failed",
+        message: "Remote issue refresh failed",
+        details: {
+          provider: remote.provider,
+          displayRef: remote.displayRef,
+          error: message,
+        },
+      });
+      return reply.code(400).send({ error: message });
     }
   });
 

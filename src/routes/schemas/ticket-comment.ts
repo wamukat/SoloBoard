@@ -6,7 +6,7 @@ export const commentSyncSchema = {
   additionalProperties: false,
   properties: {
     commentId: positiveIntegerSchema,
-    status: { type: "string", enum: ["local_only", "pushed", "push_failed"] },
+    status: { type: "string", enum: ["local_only", "pushing", "pushed", "push_failed"] },
     remoteCommentId: { anyOf: [{ type: "string" }, { type: "null" }] },
     pushedAt: { anyOf: [{ type: "string" }, { type: "null" }] },
     lastError: { anyOf: [{ type: "string" }, { type: "null" }] },

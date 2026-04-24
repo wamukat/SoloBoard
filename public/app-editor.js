@@ -63,7 +63,23 @@ export function createEditorModule(ctx) {
     if (!open) {
       elements.editorRemoteImportError.hidden = true;
       elements.editorRemoteImportError.textContent = "";
+      clearRemoteImportPreview();
     }
+  }
+
+  function clearRemoteImportPreview() {
+    state.editorRemoteImportPreview = null;
+    elements.editorRemoteImportPreview.hidden = true;
+    elements.editorRemoteImportPreview.innerHTML = "";
+    syncRemoteImportActions();
+  }
+
+  function syncRemoteImportActions() {
+    const hasPreview = Boolean(state.editorRemoteImportPreview);
+    const hasDuplicate = Boolean(state.editorRemoteImportPreview?.duplicate);
+    const hasProvider = hasEnabledRemoteProvider();
+    elements.editorRemoteImportPreviewButton.disabled = !hasProvider;
+    elements.editorRemoteImportSubmitButton.disabled = !hasProvider || !hasPreview || hasDuplicate;
   }
 
   function syncRemoteImportProviderSwitch() {
@@ -89,6 +105,10 @@ export function createEditorModule(ctx) {
     if (!isRemoteProviderEnabled(provider)) {
       return;
     }
+    if (elements.editorRemoteProvider.value !== provider) {
+      state.editorRemoteImportPreviewRequestId = (state.editorRemoteImportPreviewRequestId ?? 0) + 1;
+      clearRemoteImportPreview();
+    }
     elements.editorRemoteProvider.value = provider;
     elements.editorRemoteUrl.placeholder = remoteUrlPlaceholder(provider);
     syncRemoteImportProviderSwitch();
@@ -112,6 +132,10 @@ export function createEditorModule(ctx) {
     populateRemoteImportLaneOptions();
     setRemoteImportProvider(firstEnabledRemoteProvider());
     elements.editorRemoteUrl.value = "";
+    elements.editorRemoteBacklinkComment.checked = false;
+    elements.editorRemoteBacklinkUrl.value = "";
+    syncRemoteBacklinkOptions();
+    clearRemoteImportPreview();
     elements.editorRemoteImportError.hidden = true;
     elements.editorRemoteImportError.textContent = "";
     state.editorRemoteImportOpen = true;
@@ -152,33 +176,121 @@ export function createEditorModule(ctx) {
     queueMicrotask(() => elements.remoteImportCreateButton.focus({ preventScroll: true }));
   }
 
+  function getRemoteImportInput() {
+    return {
+      provider: elements.editorRemoteProvider.value.trim(),
+      laneId: Number(elements.editorRemoteLane.value),
+      url: elements.editorRemoteUrl.value.trim(),
+      postBacklinkComment: elements.editorRemoteBacklinkComment.checked,
+      backlinkUrl: elements.editorRemoteBacklinkUrl.value.trim() || undefined,
+    };
+  }
+
+  function remoteImportInputKey(input) {
+    return `${input.provider}\n${input.laneId}\n${input.url}`;
+  }
+
+  function validateRemoteImportInput(input) {
+    if (!input.provider || !Number.isInteger(input.laneId) || !input.url) {
+      return "Provider, lane, and issue URL are required";
+    }
+    if (!isRemoteProviderEnabled(input.provider)) {
+      return `${optionProviderLabel(input.provider)} requires a configured credential`;
+    }
+    return "";
+  }
+
+  function renderRemoteImportPreview(preview, input) {
+    const stateLabel = preview.state || "Unknown state";
+    const duplicateText = preview.duplicate
+      ? `Already imported as ${preview.existingTicketRef || `#${preview.existingTicketId}`}`
+      : "Ready to import";
+    state.editorRemoteImportPreview = {
+      ...preview,
+      key: remoteImportInputKey(input),
+    };
+    elements.editorRemoteImportPreview.hidden = false;
+    elements.editorRemoteImportPreview.innerHTML = `
+      <div class="editor-remote-import-preview-head">
+        <span class="editor-remote-import-preview-ref">${ctx.escapeHtml(preview.displayRef)}</span>
+        <span class="editor-remote-import-preview-state">${ctx.escapeHtml(stateLabel)}</span>
+      </div>
+      <div class="editor-remote-import-preview-title">${ctx.escapeHtml(preview.title)}</div>
+      <div class="editor-remote-import-preview-meta${preview.duplicate ? " duplicate" : ""}">${ctx.escapeHtml(duplicateText)}</div>
+    `;
+    syncRemoteImportActions();
+  }
+
+  async function previewRemoteImport() {
+    if (!state.activeBoardId) {
+      return;
+    }
+    const input = getRemoteImportInput();
+    const inputKey = remoteImportInputKey(input);
+    const validationError = validateRemoteImportInput(input);
+    if (validationError) {
+      elements.editorRemoteImportError.hidden = false;
+      elements.editorRemoteImportError.textContent = validationError;
+      return;
+    }
+    state.editorRemoteImportPreviewRequestId = (state.editorRemoteImportPreviewRequestId ?? 0) + 1;
+    const requestId = state.editorRemoteImportPreviewRequestId;
+    elements.editorRemoteImportError.hidden = true;
+    elements.editorRemoteImportError.textContent = "";
+    elements.editorRemoteImportPreviewButton.disabled = true;
+    elements.editorRemoteImportSubmitButton.disabled = true;
+    try {
+      const preview = await ctx.sendJson(`/api/boards/${state.activeBoardId}/remote-import/preview`, {
+        method: "POST",
+        body: input,
+      });
+      if (requestId === state.editorRemoteImportPreviewRequestId && inputKey === remoteImportInputKey(getRemoteImportInput())) {
+        renderRemoteImportPreview(preview, input);
+      }
+    } catch (error) {
+      if (requestId === state.editorRemoteImportPreviewRequestId) {
+        clearRemoteImportPreview();
+        elements.editorRemoteImportError.hidden = false;
+        elements.editorRemoteImportError.textContent = error.message;
+      }
+    } finally {
+      syncRemoteImportActions();
+    }
+  }
+
   async function submitRemoteImport(event) {
     event.preventDefault();
     if (!state.activeBoardId) {
       return;
     }
-    const provider = elements.editorRemoteProvider.value.trim();
-    const laneId = Number(elements.editorRemoteLane.value);
-    const url = elements.editorRemoteUrl.value.trim();
-    if (!provider || !Number.isInteger(laneId) || !url) {
+    const input = getRemoteImportInput();
+    const validationError = validateRemoteImportInput(input);
+    if (validationError) {
       elements.editorRemoteImportError.hidden = false;
-      elements.editorRemoteImportError.textContent = "Provider, lane, and issue URL are required";
+      elements.editorRemoteImportError.textContent = validationError;
       return;
     }
-    if (!isRemoteProviderEnabled(provider)) {
+    if (!state.editorRemoteImportPreview || state.editorRemoteImportPreview.key !== remoteImportInputKey(input)) {
       elements.editorRemoteImportError.hidden = false;
-      elements.editorRemoteImportError.textContent = `${optionProviderLabel(provider)} requires a configured credential`;
+      elements.editorRemoteImportError.textContent = "Preview the remote issue before importing";
+      return;
+    }
+    if (state.editorRemoteImportPreview.duplicate) {
+      elements.editorRemoteImportError.hidden = false;
+      elements.editorRemoteImportError.textContent = "This remote issue is already imported";
       return;
     }
     elements.editorRemoteImportSubmitButton.disabled = true;
+    elements.editorRemoteImportPreviewButton.disabled = true;
     elements.editorRemoteImportCancelButton.disabled = true;
     elements.editorRemoteImportCloseButton.disabled = true;
     try {
       const ticket = await ctx.sendJson(`/api/boards/${state.activeBoardId}/remote-import`, {
         method: "POST",
-        body: { provider, laneId, url },
+        body: input,
       });
       state.editorRemoteImportOpen = false;
+      clearRemoteImportPreview();
       syncRemoteImportSheet();
       await ctx.refreshBoardDetail();
       await openEditor(ticket.id, "view");
@@ -187,9 +299,27 @@ export function createEditorModule(ctx) {
       elements.editorRemoteImportError.hidden = false;
       elements.editorRemoteImportError.textContent = error.message;
     } finally {
-      elements.editorRemoteImportSubmitButton.disabled = DEFAULT_REMOTE_PROVIDER_ORDER.every((candidate) => !isRemoteProviderEnabled(candidate));
+      syncRemoteImportActions();
       elements.editorRemoteImportCancelButton.disabled = false;
       elements.editorRemoteImportCloseButton.disabled = false;
+    }
+  }
+
+  function handleRemoteImportInputChange() {
+    state.editorRemoteImportPreviewRequestId = (state.editorRemoteImportPreviewRequestId ?? 0) + 1;
+    clearRemoteImportPreview();
+  }
+
+  function handleRemoteBacklinkToggle() {
+    syncRemoteBacklinkOptions();
+  }
+
+  function syncRemoteBacklinkOptions() {
+    const enabled = elements.editorRemoteBacklinkComment.checked;
+    elements.editorRemoteBacklinkUrlRow.hidden = !enabled;
+    elements.editorRemoteBacklinkUrl.disabled = !enabled;
+    if (!enabled) {
+      elements.editorRemoteBacklinkUrl.value = "";
     }
   }
 
@@ -283,7 +413,7 @@ export function createEditorModule(ctx) {
   }
 
   function syncRemoteImportProviderHelp() {
-    elements.editorRemoteImportSubmitButton.disabled = !hasEnabledRemoteProvider();
+    syncRemoteImportActions();
     elements.editorRemoteProviderHelp.hidden = true;
     elements.editorRemoteProviderHelp.textContent = "";
   }
@@ -564,7 +694,9 @@ export function createEditorModule(ctx) {
     handleParentFieldClick: relationsModule.handleParentFieldClick,
     handleParentSearchInput: relationsModule.handleParentSearchInput,
     handleParentSearchKeydown: relationsModule.handleParentSearchKeydown,
+    handleRemoteBacklinkToggle,
     handleRemoteImportProviderClick,
+    handleRemoteImportInputChange,
     handleTicketTagSearchInput: tagPicker.handleSearchInput,
     handleTicketTagSearchKeydown: tagPicker.handleSearchKeydown,
     handleTicketTagFieldClick: tagPicker.handleFieldClick,
@@ -573,6 +705,7 @@ export function createEditorModule(ctx) {
     openEditor,
     openParentOptions: relationsModule.openParentOptions,
     openTicketTagOptions: tagPicker.openOptions,
+    previewRemoteImport,
     saveTicket,
     submitRemoteImport,
     setRemoteProviderAvailability,

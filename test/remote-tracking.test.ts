@@ -204,6 +204,19 @@ test("remote tracking helpers persist ticket links and comment sync state", () =
     assert.equal(pushedSync.status, "pushed");
     assert.equal(pushedSync.remoteCommentId, "gh-1");
     assert.equal(db.getCommentRemoteSync(comment.id)?.pushedAt, "2026-04-23T00:00:04.000Z");
+
+    const secondComment = db.addComment({ ticketId: ticket.id, bodyMarkdown: "Second comment" });
+    const firstStart = db.startCommentRemotePush(secondComment.id);
+    assert.equal(firstStart.started, true);
+    assert.equal(firstStart.sync.status, "pushing");
+    const duplicateStart = db.startCommentRemotePush(secondComment.id);
+    assert.equal(duplicateStart.started, false);
+    db.sqlite
+      .prepare("UPDATE comment_remote_sync SET updated_at = ? WHERE comment_id = ?")
+      .run("2026-04-23T00:00:00.000Z", secondComment.id);
+    const staleStart = db.startCommentRemotePush(secondComment.id);
+    assert.equal(staleStart.started, true);
+    assert.equal(staleStart.sync.status, "pushing");
   } finally {
     db.close();
   }

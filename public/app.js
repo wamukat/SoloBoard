@@ -52,6 +52,8 @@ const state = {
   detailBodyTab: "local",
   editorBodyTab: "local",
   editorRemoteImportOpen: false,
+  editorRemoteImportPreview: null,
+  editorRemoteImportPreviewRequestId: 0,
   skipDialogCloseSync: false,
   toastTimer: null,
   uxResolver: null,
@@ -279,13 +281,18 @@ const elements = {
   editorRemoteImportForm: document.querySelector("#editor-remote-import-form"),
   editorRemoteImportCloseButton: document.querySelector("#editor-remote-import-close-button"),
   editorRemoteImportCancelButton: document.querySelector("#editor-remote-import-cancel-button"),
+  editorRemoteImportPreviewButton: document.querySelector("#editor-remote-import-preview-button"),
   editorRemoteImportSubmitButton: document.querySelector("#editor-remote-import-submit-button"),
+  editorRemoteImportPreview: document.querySelector("#editor-remote-import-preview"),
   editorRemoteProviderSwitch: document.querySelector("#editor-remote-provider-switch"),
   editorRemoteProviderOptions: [...document.querySelectorAll("[data-remote-provider-option]")],
   editorRemoteProviderHelp: document.querySelector("#editor-remote-provider-help"),
   editorRemoteProvider: document.querySelector("#editor-remote-provider"),
   editorRemoteLane: document.querySelector("#editor-remote-lane"),
   editorRemoteUrl: document.querySelector("#editor-remote-url"),
+  editorRemoteBacklinkComment: document.querySelector("#editor-remote-backlink-comment"),
+  editorRemoteBacklinkUrlRow: document.querySelector("#editor-remote-backlink-url-row"),
+  editorRemoteBacklinkUrl: document.querySelector("#editor-remote-backlink-url"),
   editorRemoteImportError: document.querySelector("#editor-remote-import-error"),
   editorHeader: document.querySelector(".editor-header"),
   editorHeaderState: document.querySelector("#editor-header-state"),
@@ -304,6 +311,7 @@ const elements = {
   ticketBodyTabs: document.querySelector("#ticket-body-tabs"),
   ticketLocalBodyTabButton: document.querySelector("#ticket-local-body-tab-button"),
   ticketRemoteBodyTabButton: document.querySelector("#ticket-remote-body-tab-button"),
+  ticketDiffBodyTabButton: document.querySelector("#ticket-diff-body-tab-button"),
   ticketViewBody: document.querySelector("#ticket-view-body"),
   commentsTabButton: document.querySelector("#comments-tab-button"),
   activityTabButton: document.querySelector("#activity-tab-button"),
@@ -410,6 +418,10 @@ function bindEvents() {
   elements.editorRemoteProviderSwitch.addEventListener("click", handleRemoteImportProviderClick);
   elements.editorRemoteImportCloseButton.addEventListener("click", closeRemoteImportSheet);
   elements.editorRemoteImportCancelButton.addEventListener("click", closeRemoteImportSheet);
+  elements.editorRemoteImportPreviewButton.addEventListener("click", previewRemoteImport);
+  elements.editorRemoteUrl.addEventListener("input", handleRemoteImportInputChange);
+  elements.editorRemoteLane.addEventListener("change", handleRemoteImportInputChange);
+  elements.editorRemoteBacklinkComment.addEventListener("change", handleRemoteBacklinkToggle);
   elements.editorRemoteImportForm.addEventListener("submit", submitRemoteImport);
   elements.ticketComments.addEventListener("click", handleCommentAction);
   elements.editorHeader.addEventListener("click", handleDetailClick);
@@ -1002,6 +1014,8 @@ const {
   handleParentFieldClick,
   handleParentSearchInput,
   handleParentSearchKeydown,
+  handleRemoteBacklinkToggle,
+  handleRemoteImportInputChange,
   handleRemoteImportProviderClick,
   handleTicketTagSearchInput,
   handleTicketTagSearchKeydown,
@@ -1011,6 +1025,7 @@ const {
   openEditor,
   openParentOptions,
   openTicketTagOptions,
+  previewRemoteImport,
   saveTicket,
   submitRemoteImport,
   setEditBodyTab,

@@ -8,6 +8,12 @@ export type RemoteCredentialScope = {
   instanceUrl: string;
 };
 
+export type ConfiguredRemoteCredentialScope = {
+  provider: string;
+  instanceUrl: string;
+  wildcard: boolean;
+};
+
 export interface RemoteCredentialResolver {
   getCredential(scope: RemoteCredentialScope): RemoteCredential | null | Promise<RemoteCredential | null>;
 }
@@ -38,8 +44,8 @@ export class EnvRemoteCredentialResolver implements RemoteCredentialResolver {
     }
     const parsed = parseCredentialMap(this.env.KANBALONE_REMOTE_CREDENTIALS);
     const provider = normalizeProvider(scope.provider);
-    const instanceUrl = normalizeInstanceUrl(scope.instanceUrl);
-    return parsed.get(`${provider}:${instanceUrl}`) ?? parsed.get(`${provider}:*`) ?? null;
+    const instanceUrl = normalizeInstanceUrlForProvider(provider, scope.instanceUrl);
+    return parsed.get(`${provider}:${instanceUrl}`) ?? getWildcardCredential(parsed, provider);
   }
 }
 
@@ -66,7 +72,11 @@ export function getConfiguredCredentialProviders(env: CredentialEnvironment = pr
     for (const key of parsed.keys()) {
       const separatorIndex = key.indexOf(":");
       if (separatorIndex > 0) {
-        providers.add(key.slice(0, separatorIndex));
+        const provider = key.slice(0, separatorIndex);
+        const instanceUrl = key.slice(separatorIndex + 1);
+        if (instanceUrl !== "*" || allowsWildcardCredentialFallback(provider)) {
+          providers.add(provider);
+        }
       }
     }
   }
@@ -74,6 +84,32 @@ export function getConfiguredCredentialProviders(env: CredentialEnvironment = pr
     providers.add("github");
   }
   return [...providers].sort();
+}
+
+export function getConfiguredCredentialScopes(env: CredentialEnvironment = process.env): ConfiguredRemoteCredentialScope[] {
+  const scopes: ConfiguredRemoteCredentialScope[] = [];
+  if (env.KANBALONE_REMOTE_CREDENTIALS) {
+    const parsed = JSON.parse(env.KANBALONE_REMOTE_CREDENTIALS) as Record<string, unknown>;
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!parseCredentialValue(value)) {
+        continue;
+      }
+      const separatorIndex = key.indexOf(":");
+      if (separatorIndex > 0) {
+        const provider = normalizeProvider(key.slice(0, separatorIndex));
+        const instanceUrl = key.slice(separatorIndex + 1);
+        scopes.push({
+          provider,
+          instanceUrl: instanceUrl === "*" ? "*" : normalizeInstanceUrlForProvider(provider, instanceUrl),
+          wildcard: instanceUrl === "*",
+        });
+      }
+    }
+  }
+  if (env.GITHUB_TOKEN) {
+    scopes.push({ provider: "github", instanceUrl: "https://github.com", wildcard: false });
+  }
+  return scopes;
 }
 
 function parseCredentialValue(value: unknown): RemoteCredential | null {
@@ -96,14 +132,39 @@ function normalizeCredentialKey(key: string): string {
   if (!provider || !instance) {
     throw new Error("Remote credential keys must use provider:instanceUrl");
   }
-  return `${normalizeProvider(provider)}:${instance === "*" ? "*" : normalizeInstanceUrl(instance)}`;
+  const normalizedProvider = normalizeProvider(provider);
+  return `${normalizedProvider}:${instance === "*" ? "*" : normalizeInstanceUrlForProvider(normalizedProvider, instance)}`;
 }
 
 function normalizeProvider(provider: string): string {
   return provider.trim().toLowerCase();
 }
 
+function getWildcardCredential(credentials: Map<string, RemoteCredential>, provider: string): RemoteCredential | null {
+  if (!allowsWildcardCredentialFallback(provider)) {
+    return null;
+  }
+  return credentials.get(`${provider}:*`) ?? null;
+}
+
+function allowsWildcardCredentialFallback(provider: string): boolean {
+  return provider !== "github" && provider !== "gitlab";
+}
+
 function normalizeInstanceUrl(instanceUrl: string): string {
   const url = new URL(instanceUrl);
   return url.origin;
+}
+
+function normalizeInstanceUrlForProvider(provider: string, instanceUrl: string): string {
+  if (provider === "redmine") {
+    return normalizeCredentialScopeInstanceUrl(instanceUrl);
+  }
+  return normalizeInstanceUrl(instanceUrl);
+}
+
+function normalizeCredentialScopeInstanceUrl(instanceUrl: string): string {
+  const url = new URL(instanceUrl);
+  const pathname = url.pathname === "/" ? "" : url.pathname.replace(/\/+$/, "");
+  return `${url.origin}${pathname}`;
 }

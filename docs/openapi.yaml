@@ -62,6 +62,62 @@ paths:
         "500":
           $ref: "#/components/responses/Error"
 
+  /api/remote-diagnostics:
+    get:
+      summary: List remote provider diagnostic status
+      operationId: listRemoteProviderDiagnostics
+      responses:
+        "200":
+          description: Remote provider credential configuration status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        hasCredential:
+                          type: boolean
+                        status:
+                          type: string
+                          enum: [configured, missing_credential]
+                      required: [id, hasCredential, status]
+                required: [providers]
+        "400":
+          $ref: "#/components/responses/Error"
+        "500":
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Check a remote issue credential
+      description: Attempts to resolve a remote issue with an exact-scope configured provider credential and returns a token-safe diagnostic result. Wildcard credentials are not used for user-supplied diagnostic URLs.
+      operationId: checkRemoteCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RemoteDiagnosticRequest"
+      responses:
+        "200":
+          description: Remote issue is reachable with the configured credential
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemoteDiagnosticResult"
+        "400":
+          description: Diagnostic failed or the provider is unsupported/missing credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemoteDiagnosticResult"
+        "500":
+          $ref: "#/components/responses/Error"
+
   /api/boards:
     get:
       summary: List boards
@@ -517,6 +573,31 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
 
+  /api/boards/{boardId}/remote-import/preview:
+    post:
+      summary: Preview a remote issue before import
+      description: Resolves a remote issue without creating a local ticket and reports whether the remote issue has already been imported.
+      operationId: previewRemoteIssueImport
+      parameters:
+        - $ref: "#/components/parameters/BoardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RemoteIssueImport"
+      responses:
+        "200":
+          description: Remote issue preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemoteIssueImportPreview"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
   /api/boards/{boardId}/tickets/bulk-complete:
     post:
       summary: Bulk update resolved state
@@ -910,7 +991,7 @@ paths:
   /api/comments/{commentId}/push-remote:
     post:
       summary: Push a local comment to the tracked remote issue
-      description: Posts the local comment body to the linked remote issue and marks the comment as pushed. Already-pushed comments are rejected to avoid duplicate remote comments.
+      description: Posts the local comment body to the linked remote issue and marks the comment as pushed. Already-pushed and in-progress comments are rejected to avoid duplicate remote comments.
       operationId: pushCommentToRemote
       parameters:
         - name: commentId
@@ -928,6 +1009,8 @@ paths:
         "400":
           $ref: "#/components/responses/Error"
         "404":
+          $ref: "#/components/responses/Error"
+        "409":
           $ref: "#/components/responses/Error"
 
   /api/tickets/{ticketId}/activity:
@@ -1021,7 +1104,7 @@ components:
         commentId: { type: integer }
         status:
           type: string
-          enum: [local_only, pushed, push_failed]
+          enum: [local_only, pushing, pushed, push_failed]
         remoteCommentId:
           type: [string, "null"]
         pushedAt:
@@ -1153,7 +1236,81 @@ components:
         url:
           type: string
           description: Remote issue URL. For GitHub this can be used instead of projectKey and issueKey.
+        postBacklinkComment:
+          type: boolean
+          description: When true, Kanbalone attempts to post one backlink comment to the remote issue after import. This is opt-in and requires provider comment/write permission.
+        backlinkUrl:
+          type: string
+          description: Optional absolute http/https Kanbalone URL to include in the backlink comment. When omitted, the comment includes only the local ticket reference.
       required: [provider, laneId]
+    RemoteIssueImportPreview:
+      type: object
+      properties:
+        provider: { type: string }
+        instanceUrl: { type: string }
+        resourceType: { type: string }
+        projectKey: { type: string }
+        issueKey: { type: string }
+        displayRef: { type: string }
+        url: { type: string }
+        title: { type: string }
+        state:
+          type: [string, "null"]
+        remoteUpdatedAt:
+          type: [string, "null"]
+        duplicate:
+          type: boolean
+        existingTicketId:
+          type: [integer, "null"]
+        existingTicketRef:
+          type: [string, "null"]
+      required:
+        - provider
+        - instanceUrl
+        - resourceType
+        - projectKey
+        - issueKey
+        - displayRef
+        - url
+        - title
+        - state
+        - remoteUpdatedAt
+        - duplicate
+        - existingTicketId
+        - existingTicketRef
+    RemoteDiagnosticRequest:
+      type: object
+      properties:
+        provider:
+          type: string
+          description: "Remote adapter name. Current providers: github, gitlab, redmine."
+        instanceUrl:
+          type: string
+        projectKey:
+          type: string
+        issueKey:
+          type: string
+        url:
+          type: string
+          description: Remote issue URL to check.
+      required: [provider]
+    RemoteDiagnosticResult:
+      type: object
+      properties:
+        provider:
+          type: string
+        hasCredential:
+          type: boolean
+        status:
+          type: string
+          enum: [missing_credential, reachable, auth_failed, permission_failed, not_found, rate_limited, unsupported_provider, error]
+        displayRef:
+          type: string
+        url:
+          type: string
+        message:
+          type: string
+      required: [provider, hasCredential, status]
     Ticket:
       type: object
       properties:

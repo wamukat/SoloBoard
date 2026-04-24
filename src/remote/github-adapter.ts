@@ -1,5 +1,6 @@
 import type { RemoteCommentPushResult, RemoteIssueAdapter, RemoteIssueLookup, RemoteIssueSnapshot } from "./adapters.js";
 import { EnvRemoteCredentialResolver, type RemoteCredentialResolver } from "./credentials.js";
+import { fetchRemoteJson } from "./http.js";
 import type { TicketRemoteLinkView } from "../types.js";
 
 type GithubIssueResponse = {
@@ -60,6 +61,7 @@ export class GithubIssueAdapter implements RemoteIssueAdapter {
         method: "POST",
         body: JSON.stringify({ body: bodyMarkdown }),
       },
+      { maxRetries: 0 },
     );
     return {
       remoteCommentId: String(response.id),
@@ -67,7 +69,7 @@ export class GithubIssueAdapter implements RemoteIssueAdapter {
     };
   }
 
-  private async fetchJson<T>(url: string, instanceUrl: string, init: RequestInit = {}): Promise<T> {
+  private async fetchJson<T>(url: string, instanceUrl: string, init: RequestInit = {}, options: { maxRetries?: number } = {}): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("accept", "application/vnd.github+json");
     if (init.body && !headers.has("content-type")) {
@@ -77,12 +79,7 @@ export class GithubIssueAdapter implements RemoteIssueAdapter {
     if (credential?.type === "token") {
       headers.set("authorization", `Bearer ${credential.token}`);
     }
-    const response = await fetch(url, { ...init, headers });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`GitHub request failed: ${response.status} ${text}`.trim());
-    }
-    return response.json() as Promise<T>;
+    return fetchRemoteJson<T>(url, { ...init, headers }, { providerLabel: "GitHub", maxRetries: options.maxRetries });
   }
 }
 

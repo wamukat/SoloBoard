@@ -139,6 +139,24 @@ a.ticket-remote-ref:hover {
   font-size: var(--font-size-label);
 }
 
+.ticket-remote-stale-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.18rem 0.45rem;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: var(--warning);
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.ticket-remote-stale-pill .icon {
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
+}
+
 .ticket-remote-summary-actions {
   display: inline-flex;
   align-items: center;
@@ -173,6 +191,52 @@ a.ticket-remote-ref:hover {
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-control);
   background: var(--surface-inset);
+}
+
+.ticket-body-diff {
+  display: grid;
+  max-height: min(52vh, 42rem);
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-control);
+  background: var(--surface-inset);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: var(--font-size-label);
+}
+
+.ticket-body-diff-row {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+}
+
+.ticket-body-diff-row:last-child {
+  border-bottom: 0;
+}
+
+.ticket-body-diff-marker,
+.ticket-body-diff-line {
+  padding: 0.32rem 0.5rem;
+}
+
+.ticket-body-diff-marker {
+  text-align: center;
+  user-select: none;
+  border-right: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+}
+
+.ticket-body-diff-line {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ticket-body-diff-row-remote {
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+}
+
+.ticket-body-diff-row-local {
+  background: color-mix(in srgb, var(--success) 9%, transparent);
 }
 
 .ticket-detail-badge-button {

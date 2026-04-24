@@ -7,7 +7,7 @@ import { readPackageMeta } from "./app-meta.js";
 import { BoardEventHub } from "./board-event-hub.js";
 import { KanbanDb } from "./db.js";
 import type { RemoteAdapterRegistry } from "./remote/adapters.js";
-import { getConfiguredCredentialProviders } from "./remote/credentials.js";
+import { getConfiguredCredentialProviders, getConfiguredCredentialScopes, type ConfiguredRemoteCredentialScope } from "./remote/credentials.js";
 import { GithubIssueAdapter } from "./remote/github-adapter.js";
 import { GitlabIssueAdapter } from "./remote/gitlab-adapter.js";
 import { RedmineIssueAdapter } from "./remote/redmine-adapter.js";
@@ -37,6 +37,8 @@ type BuildAppOptions = {
   dbFile: string;
   staticDir?: string;
   remoteAdapters?: RemoteAdapterRegistry;
+  remoteCredentialProviders?: string[];
+  remoteCredentialScopes?: ConfiguredRemoteCredentialScope[];
 };
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {
@@ -50,7 +52,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     gitlab: new GitlabIssueAdapter(),
     redmine: new RedmineIssueAdapter(),
   };
-  const configuredProviders = new Set(getConfiguredCredentialProviders());
+  const configuredProviders = new Set(options.remoteCredentialProviders ?? getConfiguredCredentialProviders());
+  const remoteCredentialScopes = options.remoteCredentialScopes ?? getConfiguredCredentialScopes();
   const remoteProviderMeta = ["github", "gitlab", "redmine"].map((id) => ({
     id,
     hasCredential: configuredProviders.has(id),
@@ -69,6 +72,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   registerSystemRoutes(app, {
     ...appMeta,
     remoteProviders: remoteProviderMeta,
+    remoteAdapters,
+    remoteCredentialScopes,
   });
   registerBoardRoutes(app, {
     addBoardEventClient: boardEventHub.addClient,

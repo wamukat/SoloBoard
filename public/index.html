@@ -206,6 +206,7 @@
           <div id="ticket-body-tabs" class="detail-tabs ticket-body-tabs" role="tablist" aria-label="Ticket body" hidden>
             <button type="button" id="ticket-local-body-tab-button" class="detail-tab active" data-ticket-body-tab="local" role="tab" aria-selected="true">Local Body</button>
             <button type="button" id="ticket-remote-body-tab-button" class="detail-tab" data-ticket-body-tab="remote" role="tab" aria-selected="false">Remote Body</button>
+            <button type="button" id="ticket-diff-body-tab-button" class="detail-tab" data-ticket-body-tab="diff" role="tab" aria-selected="false">Diff</button>
           </div>
           <div id="ticket-view-body" class="markdown ticket-view-body"></div>
           <div id="ticket-relations" class="ticket-relations"></div>
@@ -385,10 +386,20 @@
               <span class="editor-field-label">Lane</span>
               <select id="editor-remote-lane" required></select>
             </label>
+            <label class="editor-field editor-remote-backlink-toggle">
+              <input id="editor-remote-backlink-comment" type="checkbox" />
+              <span>Post backlink comment to remote</span>
+            </label>
+            <label id="editor-remote-backlink-url-row" class="editor-field" hidden>
+              <span class="editor-field-label">Kanbalone URL</span>
+              <input id="editor-remote-backlink-url" type="url" placeholder="https://kanbalone.example.com/boards/1/tickets/123" />
+            </label>
+            <div id="editor-remote-import-preview" class="editor-remote-import-preview" hidden></div>
             <div id="editor-remote-import-error" class="danger" hidden></div>
             <div class="editor-actions">
               <div class="editor-actions-right">
                 <button id="editor-remote-import-cancel-button" type="button" class="ghost">Cancel</button>
+                <button id="editor-remote-import-preview-button" type="button" class="ghost">Preview</button>
                 <button id="editor-remote-import-submit-button" type="submit" class="primary-action">Import</button>
               </div>
             </div>

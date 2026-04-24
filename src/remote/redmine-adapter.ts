@@ -1,6 +1,7 @@
 import type { TicketRemoteLinkView } from "../types.js";
 import type { RemoteCommentPushResult, RemoteIssueAdapter, RemoteIssueLookup, RemoteIssueSnapshot } from "./adapters.js";
 import { EnvRemoteCredentialResolver, type RemoteCredentialResolver } from "./credentials.js";
+import { fetchRemoteJson } from "./http.js";
 
 type RedmineIssueResponse = {
   issue: {
@@ -54,6 +55,7 @@ export class RedmineIssueAdapter implements RemoteIssueAdapter {
           },
         }),
       },
+      { maxRetries: 0 },
     );
     const issue = await this.fetchIssueJson(link.instanceUrl, link.issueKey, { includeJournals: true });
     const matchingJournal = [...(issue.journals ?? [])]
@@ -77,7 +79,7 @@ export class RedmineIssueAdapter implements RemoteIssueAdapter {
     return response.issue;
   }
 
-  private async fetchJson<T>(url: string, instanceUrl: string, init: RequestInit = {}): Promise<T> {
+  private async fetchJson<T>(url: string, instanceUrl: string, init: RequestInit = {}, options: { maxRetries?: number } = {}): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("accept", "application/json");
     if (init.body && !headers.has("content-type")) {
@@ -87,15 +89,7 @@ export class RedmineIssueAdapter implements RemoteIssueAdapter {
     if (credential?.type === "token") {
       headers.set("x-redmine-api-key", credential.token);
     }
-    const response = await fetch(url, { ...init, headers });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Redmine request failed: ${response.status} ${text}`.trim());
-    }
-    if (response.status === 204) {
-      return undefined as T;
-    }
-    return response.json() as Promise<T>;
+    return fetchRemoteJson<T>(url, { ...init, headers }, { providerLabel: "Redmine", maxRetries: options.maxRetries });
   }
 }
 

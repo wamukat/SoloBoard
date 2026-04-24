@@ -127,6 +127,69 @@
   font-size: var(--font-size-label);
 }
 
+.editor-remote-backlink-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text);
+  font-size: var(--font-size-label);
+}
+
+.editor-remote-backlink-toggle input {
+  margin: 0;
+}
+
+.editor-remote-import-preview {
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-1));
+  padding: var(--space-3);
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.editor-remote-import-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.editor-remote-import-preview-ref,
+.editor-remote-import-preview-state {
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
+}
+
+.editor-remote-import-preview-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-remote-import-preview-state {
+  flex: none;
+  color: var(--muted);
+}
+
+.editor-remote-import-preview-title {
+  color: var(--text);
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.editor-remote-import-preview-meta {
+  color: var(--success);
+  font-size: var(--font-size-label);
+}
+
+.editor-remote-import-preview-meta.duplicate {
+  color: var(--danger);
+}
+
 .editor-inline-row {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);

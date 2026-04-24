@@ -134,6 +134,289 @@ test("meta endpoint exposes app name and package version", async () => {
   }
 });
 
+test("remote diagnostics report configured providers and reachable issues", async () => {
+  const dbFile = createDbFile();
+  let fetchedUrl: string | undefined;
+  const app = buildApp({
+    dbFile,
+    staticDir: path.join(process.cwd(), "public"),
+    remoteCredentialProviders: ["github"],
+    remoteCredentialScopes: [{ provider: "github", instanceUrl: "https://github.com", wildcard: false }],
+    remoteAdapters: {
+      github: createMockGithubAdapter({
+        initial: {
+          provider: "github",
+          instanceUrl: "https://github.com",
+          resourceType: "issue",
+          projectKey: "acme/kanbalone",
+          issueKey: "123",
+          displayRef: "acme/kanbalone#123",
+          url: "https://github.com/acme/kanbalone/issues/123",
+          title: "Diagnostic target",
+          bodyMarkdown: "Remote body",
+          state: "open",
+          updatedAt: "2026-04-23T00:00:00.000Z",
+        },
+        onFetch(input) {
+          fetchedUrl = input.url;
+        },
+      }),
+    },
+  });
+
+  try {
+    const providers = await app.inject({
+      method: "GET",
+      url: "/api/remote-diagnostics",
+    });
+    assert.equal(providers.statusCode, 200);
+    assert.deepEqual(providers.json().providers, [
+      { id: "github", hasCredential: true, status: "configured" },
+      { id: "gitlab", hasCredential: false, status: "missing_credential" },
+      { id: "redmine", hasCredential: false, status: "missing_credential" },
+    ]);
+
+    const reachable = await app.inject({
+      method: "POST",
+      url: "/api/remote-diagnostics",
+      payload: {
+        provider: "github",
+        url: "https://github.com/acme/kanbalone/issues/123",
+      },
+    });
+    assert.equal(reachable.statusCode, 200);
+    assert.equal(fetchedUrl, "https://github.com/acme/kanbalone/issues/123");
+    assert.deepEqual(reachable.json(), {
+      provider: "github",
+      hasCredential: true,
+      status: "reachable",
+      displayRef: "acme/kanbalone#123",
+      url: "https://github.com/acme/kanbalone/issues/123",
+      message: "Remote issue is reachable with the configured credential",
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+test("remote diagnostics support exact Redmine subpath credential scopes", async () => {
+  const dbFile = createDbFile();
+  const app = buildApp({
+    dbFile,
+    staticDir: path.join(process.cwd(), "public"),
+    remoteCredentialProviders: ["redmine"],
+    remoteCredentialScopes: [{ provider: "redmine", instanceUrl: "https://redmine.example.test/redmine", wildcard: false }],
+    remoteAdapters: {
+      redmine: createMockRemoteAdapter("redmine", {
+        initial: {
+          provider: "redmine",
+          instanceUrl: "https://redmine.example.test/redmine",
+          resourceType: "issue",
+          projectKey: "7",
+          issueKey: "7",
+          displayRef: "Backend #7",
+          url: "https://redmine.example.test/redmine/issues/7",
+          title: "Redmine diagnostic",
+          bodyMarkdown: "Remote body",
+          state: "New",
+          updatedAt: "2026-04-23T00:00:00.000Z",
+        },
+      }),
+    },
+  });
+
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/remote-diagnostics",
+      payload: {
+        provider: "redmine",
+        url: "https://redmine.example.test/redmine/issues/7",
+      },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().status, "reachable");
+    assert.equal(response.json().displayRef, "Backend #7");
+  } finally {
+    await app.close();
+  }
+});
+
+test("remote diagnostics classify missing credentials and provider failures", async () => {
+  const dbFile = createDbFile();
+  const app = buildApp({
+    dbFile,
+    staticDir: path.join(process.cwd(), "public"),
+    remoteCredentialProviders: ["github"],
+    remoteCredentialScopes: [{ provider: "github", instanceUrl: "https://github.com", wildcard: false }],
+    remoteAdapters: {
+      github: createMockGithubAdapter({
+        initial: {
+          provider: "github",
+          instanceUrl: "https://github.com",
+          resourceType: "issue",
+          projectKey: "acme/kanbalone",
+          issueKey: "403",
+          displayRef: "acme/kanbalone#403",
+          url: "https://github.com/acme/kanbalone/issues/403",
+          title: "Permission failure",
+          bodyMarkdown: "Remote body",
+          state: "open",
+          updatedAt: "2026-04-23T00:00:00.000Z",
+        },
+        onFetch() {
+          throw new Error("GitHub request failed: 403 Resource not accessible by personal access token");
+        },
+      }),
+      gitlab: createMockRemoteAdapter("gitlab", {
+        initial: {
+          provider: "gitlab",
+          instanceUrl: "https://gitlab.example.test",
+          resourceType: "issue",
+          projectKey: "team/project",
+          issueKey: "1",
+          displayRef: "team/project#1",
+          url: "https://gitlab.example.test/team/project/-/issues/1",
+          title: "Missing credential",
+          bodyMarkdown: "Remote body",
+          state: "opened",
+          updatedAt: "2026-04-23T00:00:00.000Z",
+        },
+      }),
+    },
+  });
+
+  try {
+    const missingCredential = await app.inject({
+      method: "POST",
+      url: "/api/remote-diagnostics",
+      payload: {
+        provider: "gitlab",
+        url: "https://gitlab.example.test/team/project/-/issues/1",
+      },
+    });
+    assert.equal(missingCredential.statusCode, 400);
+    assert.deepEqual(missingCredential.json(), {
+      provider: "gitlab",
+      hasCredential: false,
+      status: "missing_credential",
+      message: "Exact remote provider credential is not configured for this diagnostic target",
+    });
+
+    const permissionFailure = await app.inject({
+      method: "POST",
+      url: "/api/remote-diagnostics",
+      payload: {
+        provider: "github",
+        url: "https://github.com/acme/kanbalone/issues/403",
+      },
+    });
+    assert.equal(permissionFailure.statusCode, 400);
+    assert.deepEqual(permissionFailure.json(), {
+      provider: "github",
+      hasCredential: true,
+      status: "permission_failed",
+      message: "Remote provider credential does not have permission to read this issue.",
+    });
+  } finally {
+    await app.close();
+  }
+});
+
+test("remote diagnostics require exact credential scope and do not expose raw provider errors", async () => {
+  const dbFile = createDbFile();
+  let fetched = false;
+  const app = buildApp({
+    dbFile,
+    staticDir: path.join(process.cwd(), "public"),
+    remoteCredentialProviders: ["github"],
+    remoteCredentialScopes: [{ provider: "github", instanceUrl: "*", wildcard: true }],
+    remoteAdapters: {
+      github: createMockGithubAdapter({
+        initial: {
+          provider: "github",
+          instanceUrl: "https://github.example.test",
+          resourceType: "issue",
+          projectKey: "acme/kanbalone",
+          issueKey: "500",
+          displayRef: "acme/kanbalone#500",
+          url: "https://github.example.test/acme/kanbalone/issues/500",
+          title: "Unsafe target",
+          bodyMarkdown: "Remote body",
+          state: "open",
+          updatedAt: "2026-04-23T00:00:00.000Z",
+        },
+        onFetch() {
+          fetched = true;
+          throw new Error("GitHub request failed: 500 echoed secret ghp_should_not_leak");
+        },
+      }),
+    },
+  });
+
+  try {
+    const wildcardTarget = await app.inject({
+      method: "POST",
+      url: "/api/remote-diagnostics",
+      payload: {
+        provider: "github",
+        url: "https://github.example.test/acme/kanbalone/issues/500",
+      },
+    });
+    assert.equal(wildcardTarget.statusCode, 400);
+    assert.equal(wildcardTarget.json().status, "missing_credential");
+    assert.equal(fetched, false);
+  } finally {
+    await app.close();
+  }
+
+  const exactApp = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+    remoteCredentialProviders: ["github"],
+    remoteCredentialScopes: [{ provider: "github", instanceUrl: "https://github.com", wildcard: false }],
+    remoteAdapters: {
+      github: createMockGithubAdapter({
+        initial: {
+          provider: "github",
+          instanceUrl: "https://github.com",
+          resourceType: "issue",
+          projectKey: "acme/kanbalone",
+          issueKey: "500",
+          displayRef: "acme/kanbalone#500",
+          url: "https://github.com/acme/kanbalone/issues/500",
+          title: "Provider error",
+          bodyMarkdown: "Remote body",
+          state: "open",
+          updatedAt: "2026-04-23T00:00:00.000Z",
+        },
+        onFetch() {
+          throw new Error("GitHub request failed: 500 echoed secret ghp_should_not_leak");
+        },
+      }),
+    },
+  });
+  try {
+    const providerFailure = await exactApp.inject({
+      method: "POST",
+      url: "/api/remote-diagnostics",
+      payload: {
+        provider: "github",
+        url: "https://github.com/acme/kanbalone/issues/500",
+      },
+    });
+    assert.equal(providerFailure.statusCode, 400);
+    assert.deepEqual(providerFailure.json(), {
+      provider: "github",
+      hasCredential: true,
+      status: "error",
+      message: "Remote diagnostic failed. Check the provider URL, issue reference, and server logs.",
+    });
+  } finally {
+    await exactApp.close();
+  }
+});
+
 test("board lifecycle, ticket filters, reorder, and export/import", async () => {
   const app = buildApp({
     dbFile: createDbFile(),
@@ -808,6 +1091,349 @@ test("remote import creates a tracked ticket and prevents duplicate imports", as
   }
 });
 
+test("remote import preview resolves remote issue and reports duplicates", async () => {
+  const dbFile = createDbFile();
+  const app = buildApp({
+    dbFile,
+    staticDir: path.join(process.cwd(), "public"),
+    remoteAdapters: {
+      github: createMockGithubAdapter({
+        initial: {
+          provider: "github",
+          instanceUrl: "https://github.com",
+          resourceType: "issue",
+          projectKey: "acme/kanbalone",
+          issueKey: "102",
+          displayRef: "acme/kanbalone#102",
+          url: "https://github.com/acme/kanbalone/issues/102",
+          title: "Preview remote issue",
+          bodyMarkdown: "Preview body",
+          state: "open",
+          updatedAt: "2026-04-23T09:00:00.000Z",
+        },
+      }),
+    },
+  });
+
+  try {
+    const board = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Remote Import Preview", laneNames: ["todo"] },
+    })).json();
+
+    const previewResponse = await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import/preview`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        url: "https://github.com/acme/kanbalone/issues/102",
+      },
+    });
+    assert.equal(previewResponse.statusCode, 200);
+    assert.equal(previewResponse.json().displayRef, "acme/kanbalone#102");
+    assert.equal(previewResponse.json().title, "Preview remote issue");
+    assert.equal(previewResponse.json().state, "open");
+    assert.equal(previewResponse.json().duplicate, false);
+    assert.equal(previewResponse.json().existingTicketId, null);
+
+    const importResponse = await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        url: "https://github.com/acme/kanbalone/issues/102",
+      },
+    });
+    assert.equal(importResponse.statusCode, 201);
+
+    const duplicatePreviewResponse = await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import/preview`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        url: "https://github.com/acme/kanbalone/issues/102",
+      },
+    });
+    assert.equal(duplicatePreviewResponse.statusCode, 200);
+    assert.equal(duplicatePreviewResponse.json().duplicate, true);
+    assert.equal(duplicatePreviewResponse.json().existingTicketId, importResponse.json().id);
+    assert.equal(duplicatePreviewResponse.json().existingTicketRef, importResponse.json().ref);
+  } finally {
+    await app.close();
+  }
+});
+
+test("remote import preview rejects invalid issue URLs", async () => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+  });
+
+  try {
+    const board = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Remote Import Preview Invalid", laneNames: ["todo"] },
+    })).json();
+
+    const previewResponse = await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import/preview`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        url: "not-a-url",
+      },
+    });
+    assert.equal(previewResponse.statusCode, 400);
+    assert.match(previewResponse.json().error, /invalid url/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("remote import preview sanitizes upstream provider errors", async () => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+    remoteAdapters: {
+      github: {
+        provider: "github",
+        async fetchIssue() {
+          throw new Error("GitHub request failed: 500 echoed token secret-token-value");
+        },
+        async refreshIssue() {
+          throw new Error("not used");
+        },
+        async postComment() {
+          throw new Error("not used");
+        },
+      },
+    },
+  });
+
+  try {
+    const board = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Remote Import Preview Sanitized", laneNames: ["todo"] },
+    })).json();
+
+    const previewResponse = await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import/preview`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        url: "https://github.com/acme/kanbalone/issues/103",
+      },
+    });
+    assert.equal(previewResponse.statusCode, 400);
+    assert.equal(previewResponse.json().error, "remote import preview failed");
+    assert.doesNotMatch(JSON.stringify(previewResponse.json()), /secret-token-value/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("remote import can post an optional backlink comment once", async () => {
+  const dbFile = createDbFile();
+  const postedBodies: string[] = [];
+  const app = buildApp({
+    dbFile,
+    staticDir: path.join(process.cwd(), "public"),
+    remoteAdapters: {
+      github: createMockGithubAdapter({
+        initial: {
+          provider: "github",
+          instanceUrl: "https://github.com",
+          resourceType: "issue",
+          projectKey: "acme/kanbalone",
+          issueKey: "104",
+          displayRef: "acme/kanbalone#104",
+          url: "https://github.com/acme/kanbalone/issues/104",
+          title: "Backlink remote issue",
+          bodyMarkdown: "Backlink body",
+          state: "open",
+          updatedAt: "2026-04-23T09:00:00.000Z",
+        },
+        onPostComment(bodyMarkdown) {
+          postedBodies.push(bodyMarkdown);
+        },
+      }),
+    },
+  });
+
+  try {
+    const board = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Remote Import Backlink", laneNames: ["todo"] },
+    })).json();
+
+    const importResponse = await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        url: "https://github.com/acme/kanbalone/issues/104",
+        postBacklinkComment: true,
+      },
+    });
+    assert.equal(importResponse.statusCode, 201);
+    assert.deepEqual(postedBodies, [`Imported into Kanbalone as ${importResponse.json().ref}.`]);
+
+    const duplicateResponse = await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        url: "https://github.com/acme/kanbalone/issues/104",
+        postBacklinkComment: true,
+      },
+    });
+    assert.equal(duplicateResponse.statusCode, 409);
+    assert.equal(postedBodies.length, 1);
+  } finally {
+    await app.close();
+  }
+});
+
+test("remote import backlink can include an explicit Kanbalone URL", async () => {
+  const postedBodies: string[] = [];
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+    remoteAdapters: {
+      github: createMockGithubAdapter({
+        initial: {
+          provider: "github",
+          instanceUrl: "https://github.com",
+          resourceType: "issue",
+          projectKey: "acme/kanbalone",
+          issueKey: "105",
+          displayRef: "acme/kanbalone#105",
+          url: "https://github.com/acme/kanbalone/issues/105",
+          title: "Backlink URL remote issue",
+          bodyMarkdown: "Backlink URL body",
+          state: "open",
+          updatedAt: "2026-04-23T09:00:00.000Z",
+        },
+        onPostComment(bodyMarkdown) {
+          postedBodies.push(bodyMarkdown);
+        },
+      }),
+    },
+  });
+
+  try {
+    const board = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Remote Import Backlink URL", laneNames: ["todo"] },
+    })).json();
+
+    const importResponse = await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        url: "https://github.com/acme/kanbalone/issues/105",
+        postBacklinkComment: true,
+        backlinkUrl: "https://kanbalone.example.test/boards/1/tickets/105",
+      },
+    });
+    assert.equal(importResponse.statusCode, 201);
+    assert.deepEqual(postedBodies, [
+      `Imported into Kanbalone as ${importResponse.json().ref}: https://kanbalone.example.test/boards/1/tickets/105`,
+    ]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("remote import rejects invalid backlink URLs", async () => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+  });
+
+  try {
+    const board = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Remote Import Invalid Backlink", laneNames: ["todo"] },
+    })).json();
+
+    const importResponse = await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        url: "https://github.com/acme/kanbalone/issues/106",
+        postBacklinkComment: true,
+        backlinkUrl: "not a url\n@channel",
+      },
+    });
+    assert.equal(importResponse.statusCode, 400);
+    assert.equal(importResponse.json().error, "backlinkUrl must be an absolute http or https URL");
+  } finally {
+    await app.close();
+  }
+});
+
+test("remote import sanitizes upstream provider errors", async () => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+    remoteAdapters: {
+      github: {
+        provider: "github",
+        async fetchIssue() {
+          throw new Error("GitHub request failed: 500 echoed token secret-token-value");
+        },
+        async refreshIssue() {
+          throw new Error("not used");
+        },
+        async postComment() {
+          throw new Error("not used");
+        },
+      },
+    },
+  });
+
+  try {
+    const board = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Remote Import Sanitized", laneNames: ["todo"] },
+    })).json();
+
+    const importResponse = await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        url: "https://github.com/acme/kanbalone/issues/107",
+      },
+    });
+    assert.equal(importResponse.statusCode, 400);
+    assert.equal(importResponse.json().error, "remote import failed");
+    assert.doesNotMatch(JSON.stringify(importResponse.json()), /secret-token-value/);
+  } finally {
+    await app.close();
+  }
+});
+
 test("remote refresh updates title and remote snapshot without overwriting local body", async () => {
   const dbFile = createDbFile();
   const app = buildApp({
@@ -882,6 +1508,132 @@ test("remote refresh updates title and remote snapshot without overwriting local
     assert.equal(refreshResponse.json().remote.bodyMarkdown, "Updated remote body");
     assert.match(refreshResponse.json().remote.bodyHtml, /<p>Updated remote body<\/p>/);
     assert.equal(refreshResponse.json().remote.remoteUpdatedAt, "2026-04-23T10:00:00.000Z");
+  } finally {
+    await app.close();
+  }
+});
+
+test("remote sync operations are recorded in ticket activity", async () => {
+  const initial: RemoteIssueSnapshot = {
+    provider: "github",
+    instanceUrl: "https://github.com",
+    resourceType: "issue",
+    projectKey: "acme/kanbalone",
+    issueKey: "208",
+    displayRef: "acme/kanbalone#208",
+    url: "https://github.com/acme/kanbalone/issues/208",
+    title: "Activity remote title",
+    bodyMarkdown: "Activity remote body",
+    state: "open",
+    updatedAt: "2026-04-23T09:00:00.000Z",
+  };
+  const refreshed: RemoteIssueSnapshot = {
+    ...initial,
+    title: "Activity remote title updated",
+    bodyMarkdown: "Activity remote body updated",
+    updatedAt: "2026-04-23T10:00:00.000Z",
+  };
+  let failNextCommentPush = false;
+  let remoteCommentId = 0;
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+    remoteAdapters: {
+      github: {
+        provider: "github",
+        async fetchIssue() {
+          return initial;
+        },
+        async refreshIssue() {
+          return refreshed;
+        },
+        async postComment() {
+          if (failNextCommentPush) {
+            throw new Error("provider echoed token secret-token-value");
+          }
+          remoteCommentId += 1;
+          return {
+            remoteCommentId: `remote-comment-${remoteCommentId}`,
+            pushedAt: "2026-04-23T11:00:00.000Z",
+          };
+        },
+      },
+    },
+  });
+
+  try {
+    const board = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Remote Activity", laneNames: ["todo"] },
+    })).json();
+
+    const imported = (await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        projectKey: "acme/kanbalone",
+        issueKey: "208",
+      },
+    })).json();
+
+    const refreshResponse = await app.inject({
+      method: "POST",
+      url: `/api/tickets/${imported.id}/remote-refresh`,
+    });
+    assert.equal(refreshResponse.statusCode, 200);
+
+    const pushedComment = (await app.inject({
+      method: "POST",
+      url: `/api/tickets/${imported.id}/comments`,
+      payload: { bodyMarkdown: "Successful remote push" },
+    })).json();
+    const pushResponse = await app.inject({
+      method: "POST",
+      url: `/api/comments/${pushedComment.id}/push-remote`,
+    });
+    assert.equal(pushResponse.statusCode, 200);
+
+    failNextCommentPush = true;
+    const failedComment = (await app.inject({
+      method: "POST",
+      url: `/api/tickets/${imported.id}/comments`,
+      payload: { bodyMarkdown: "Failed remote push" },
+    })).json();
+    const failedPushResponse = await app.inject({
+      method: "POST",
+      url: `/api/comments/${failedComment.id}/push-remote`,
+    });
+    assert.equal(failedPushResponse.statusCode, 400);
+
+    const activityResponse = await app.inject({
+      method: "GET",
+      url: `/api/tickets/${imported.id}/activity`,
+    });
+    assert.equal(activityResponse.statusCode, 200);
+    const activity = activityResponse.json().activity;
+
+    const importActivity = activity.find((entry: { action: string }) => entry.action === "remote_imported");
+    assert.equal(importActivity.message, "Remote issue imported");
+    assert.equal(importActivity.details.provider, "github");
+    assert.equal(importActivity.details.displayRef, "acme/kanbalone#208");
+
+    const refreshActivity = activity.find((entry: { action: string }) => entry.action === "remote_refreshed");
+    assert.equal(refreshActivity.message, "Remote issue refreshed");
+    assert.equal(refreshActivity.details.remoteUpdatedAt, "2026-04-23T10:00:00.000Z");
+
+    const pushActivity = activity.find((entry: { action: string }) => entry.action === "remote_comment_pushed");
+    assert.equal(pushActivity.message, "Remote comment pushed");
+    assert.equal(pushActivity.details.commentId, pushedComment.id);
+    assert.equal(pushActivity.details.remoteCommentId, "remote-comment-1");
+
+    const failureActivity = activity.find((entry: { action: string }) => entry.action === "remote_comment_push_failed");
+    assert.equal(failureActivity.message, "Remote comment push failed");
+    assert.equal(failureActivity.details.commentId, failedComment.id);
+    assert.equal(failureActivity.details.error, "Remote comment push failed. Check the provider URL, issue reference, permissions, and server logs.");
+    assert.doesNotMatch(JSON.stringify(failureActivity), /secret-token-value/);
   } finally {
     await app.close();
   }
@@ -1142,6 +1894,15 @@ test("remote refresh rejects adapter identity drift", async () => {
     });
     assert.equal(refreshResponse.statusCode, 400);
     assert.equal(refreshResponse.json().error, "remote refresh returned a different issue");
+
+    const activityResponse = await app.inject({
+      method: "GET",
+      url: `/api/tickets/${imported.id}/activity`,
+    });
+    assert.equal(activityResponse.statusCode, 200);
+    const failureActivity = activityResponse.json().activity.find((entry: { action: string }) => entry.action === "remote_refresh_failed");
+    assert.equal(failureActivity.message, "Remote issue refresh failed");
+    assert.equal(failureActivity.details.error, "remote refresh returned a different issue");
   } finally {
     await app.close();
   }
@@ -1382,7 +2143,7 @@ test("remote comment push failures persist push_failed sync state", async () => 
       url: `/api/comments/${comment.id}/push-remote`,
     });
     assert.equal(pushResponse.statusCode, 400);
-    assert.equal(pushResponse.json().error, "remote API unavailable");
+    assert.equal(pushResponse.json().error, "Remote comment push failed. Check the provider URL, issue reference, permissions, and server logs.");
 
     const comments = await app.inject({
       method: "GET",
@@ -1390,8 +2151,199 @@ test("remote comment push failures persist push_failed sync state", async () => 
     });
     assert.equal(comments.statusCode, 200);
     assert.equal(comments.json().comments[0].sync.status, "push_failed");
-    assert.equal(comments.json().comments[0].sync.lastError, "remote API unavailable");
+    assert.equal(comments.json().comments[0].sync.lastError, "Remote comment push failed. Check the provider URL, issue reference, permissions, and server logs.");
   } finally {
+    await app.close();
+  }
+});
+
+test("remote comment push can recover stale pushing state", async () => {
+  const dbFile = createDbFile();
+  let postCount = 0;
+  const app = buildApp({
+    dbFile,
+    staticDir: path.join(process.cwd(), "public"),
+    remoteAdapters: {
+      github: createMockGithubAdapter({
+        initial: {
+          provider: "github",
+          instanceUrl: "https://github.com",
+          resourceType: "issue",
+          projectKey: "acme/kanbalone",
+          issueKey: "406",
+          displayRef: "acme/kanbalone#406",
+          url: "https://github.com/acme/kanbalone/issues/406",
+          title: "Stale push recovery",
+          bodyMarkdown: "Remote body",
+          state: "open",
+          updatedAt: "2026-04-23T09:00:00.000Z",
+        },
+        postCommentResult: {
+          remoteCommentId: "gh-comment-406",
+          pushedAt: "2026-04-23T11:00:00.000Z",
+        },
+        onPostComment() {
+          postCount += 1;
+        },
+      }),
+    },
+  });
+
+  try {
+    const board = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Remote Push Stale", laneNames: ["todo"] },
+    })).json();
+    const imported = (await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        projectKey: "acme/kanbalone",
+        issueKey: "406",
+      },
+    })).json();
+    const comment = (await app.inject({
+      method: "POST",
+      url: `/api/tickets/${imported.id}/comments`,
+      payload: { bodyMarkdown: "Recover stale push" },
+    })).json();
+
+    const db = new KanbanDb(dbFile);
+    try {
+      db.upsertCommentRemoteSync({ commentId: comment.id, status: "pushing" });
+      db.sqlite
+        .prepare("UPDATE comment_remote_sync SET updated_at = ? WHERE comment_id = ?")
+        .run("2026-04-23T00:00:00.000Z", comment.id);
+    } finally {
+      db.close();
+    }
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/comments/${comment.id}/push-remote`,
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().sync.status, "pushed");
+    assert.equal(response.json().sync.remoteCommentId, "gh-comment-406");
+    assert.equal(postCount, 1);
+  } finally {
+    await app.close();
+  }
+});
+
+test("remote comment push rejects concurrent duplicate attempts", async () => {
+  const dbFile = createDbFile();
+  let postCount = 0;
+  let releasePost: (() => void) | undefined;
+  let resolvePostStarted: () => void = () => {};
+  const postStarted = new Promise<void>((resolve) => {
+    resolvePostStarted = resolve;
+  });
+  const app = buildApp({
+    dbFile,
+    staticDir: path.join(process.cwd(), "public"),
+    remoteAdapters: {
+      github: {
+        provider: "github",
+        async fetchIssue() {
+          return {
+            provider: "github",
+            instanceUrl: "https://github.com",
+            resourceType: "issue",
+            projectKey: "acme/kanbalone",
+            issueKey: "405",
+            displayRef: "acme/kanbalone#405",
+            url: "https://github.com/acme/kanbalone/issues/405",
+            title: "Concurrent push",
+            bodyMarkdown: "Remote body",
+            state: "open",
+            updatedAt: "2026-04-23T09:00:00.000Z",
+          };
+        },
+        async refreshIssue(link) {
+          return {
+            provider: "github",
+            instanceUrl: link.instanceUrl,
+            resourceType: link.resourceType,
+            projectKey: link.projectKey,
+            issueKey: link.issueKey,
+            displayRef: link.displayRef,
+            url: link.url,
+            title: link.title,
+            bodyMarkdown: link.bodyMarkdown,
+            state: link.state,
+            updatedAt: link.remoteUpdatedAt,
+          };
+        },
+        async postComment() {
+          postCount += 1;
+          resolvePostStarted();
+          await new Promise<void>((release) => {
+            releasePost = release;
+          });
+          return {
+            remoteCommentId: "gh-comment-405",
+            pushedAt: "2026-04-23T11:00:00.000Z",
+          };
+        },
+      },
+    },
+  });
+
+  try {
+    const board = (await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { name: "Remote Push Race", laneNames: ["todo"] },
+    })).json();
+
+    const imported = (await app.inject({
+      method: "POST",
+      url: `/api/boards/${board.board.id}/remote-import`,
+      payload: {
+        provider: "github",
+        laneId: board.lanes[0].id,
+        projectKey: "acme/kanbalone",
+        issueKey: "405",
+      },
+    })).json();
+
+    const comment = (await app.inject({
+      method: "POST",
+      url: `/api/tickets/${imported.id}/comments`,
+      payload: { bodyMarkdown: "Only push this once" },
+    })).json();
+
+    const firstPush = app.inject({
+      method: "POST",
+      url: `/api/comments/${comment.id}/push-remote`,
+    });
+    await postStarted;
+
+    const pendingComments = await app.inject({
+      method: "GET",
+      url: `/api/tickets/${imported.id}/comments`,
+    });
+    assert.equal(pendingComments.json().comments[0].sync.status, "pushing");
+
+    const secondPush = await app.inject({
+      method: "POST",
+      url: `/api/comments/${comment.id}/push-remote`,
+    });
+    assert.equal(secondPush.statusCode, 409);
+    assert.equal(secondPush.json().error, "comment push already in progress");
+
+    releasePost?.();
+    const firstPushResponse = await firstPush;
+    assert.equal(firstPushResponse.statusCode, 200);
+    assert.equal(firstPushResponse.json().sync.status, "pushed");
+    assert.equal(firstPushResponse.json().sync.remoteCommentId, "gh-comment-405");
+    assert.equal(postCount, 1);
+  } finally {
+    releasePost?.();
     await app.close();
   }
 });

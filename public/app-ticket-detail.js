@@ -3,6 +3,9 @@ import { renderTag } from "./app-tags.js";
 import { renderPriorityBadge } from "./app-priority.js";
 import { renderRemoteProviderBadge, renderRemoteRefLink } from "./app-remote-provider.js";
 
+const REMOTE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+const MAX_BODY_DIFF_CELLS = 40000;
+
 export function createTicketDetailModule(ctx) {
   const { state, elements } = ctx;
   let activeInlineEdit = null;
@@ -19,21 +22,24 @@ export function createTicketDetailModule(ctx) {
   }
 
   function setBodyTab(tab = "local") {
-    if (activeInlineEdit === "body" && tab === "remote") {
+    if (activeInlineEdit === "body" && tab !== "local") {
       ctx.showToast("Save or cancel the local body edit before switching tabs", "error");
       return;
     }
-    state.detailBodyTab = tab === "remote" && state.dialogTicket?.remote ? "remote" : "local";
+    state.detailBodyTab = (tab === "remote" || tab === "diff") && state.dialogTicket?.remote ? tab : "local";
     const showRemote = state.detailBodyTab === "remote" && Boolean(state.dialogTicket?.remote);
-    elements.ticketLocalBodyTabButton.classList.toggle("active", !showRemote);
-    elements.ticketLocalBodyTabButton.setAttribute("aria-selected", String(!showRemote));
+    const showDiff = state.detailBodyTab === "diff" && Boolean(state.dialogTicket?.remote);
+    elements.ticketLocalBodyTabButton.classList.toggle("active", !showRemote && !showDiff);
+    elements.ticketLocalBodyTabButton.setAttribute("aria-selected", String(!showRemote && !showDiff));
     elements.ticketRemoteBodyTabButton.classList.toggle("active", showRemote);
     elements.ticketRemoteBodyTabButton.setAttribute("aria-selected", String(showRemote));
+    elements.ticketDiffBodyTabButton.classList.toggle("active", showDiff);
+    elements.ticketDiffBodyTabButton.setAttribute("aria-selected", String(showDiff));
     if (state.dialogTicket) {
-      if (activeInlineEdit === "body" && !showRemote) {
+      if (activeInlineEdit === "body" && !showRemote && !showDiff) {
         renderBodyEditor();
       } else {
-        activeInlineEdit = showRemote ? null : activeInlineEdit;
+        activeInlineEdit = showRemote || showDiff ? null : activeInlineEdit;
         renderBodyDisplay(state.dialogTicket);
       }
     }
@@ -88,6 +94,7 @@ export function createTicketDetailModule(ctx) {
       elements.ticketRemoteSummary.innerHTML = "";
       return;
     }
+    const freshness = getRemoteSnapshotFreshness(ticket.remote);
     elements.ticketRemoteSummary.hidden = false;
     elements.ticketRemoteSummary.innerHTML = `
       <div class="ticket-remote-summary-head">
@@ -95,6 +102,7 @@ export function createTicketDetailModule(ctx) {
           ${renderRemoteProviderBadge(ticket.remote.provider, ctx.escapeHtml)}
           ${renderRemoteRefLink(ticket.remote, ctx.escapeHtml)}
           <span class="ticket-remote-state muted">${ctx.escapeHtml(ticket.remote.state ?? "state unknown")}</span>
+          ${freshness.isStale ? `<span class="ticket-remote-stale-pill">${icon("circle-alert")}<span>Possibly stale</span></span>` : ""}
         </div>
         <div class="ticket-remote-summary-actions">
           <button type="button" class="ghost action-with-icon" data-refresh-remote-ticket>
@@ -105,6 +113,8 @@ export function createTicketDetailModule(ctx) {
       <div class="ticket-remote-summary-meta muted">
         <span>Imported snapshot</span>
         <span>Last sync ${ctx.escapeHtml(formatDateTime(ticket.remote.lastSyncedAt))}</span>
+        <span>Remote updated ${ctx.escapeHtml(formatDateTime(ticket.remote.remoteUpdatedAt))}</span>
+        ${freshness.isStale ? `<span>${ctx.escapeHtml(freshness.message)}</span>` : ""}
       </div>
     `;
   }
@@ -117,12 +127,14 @@ export function createTicketDetailModule(ctx) {
       return;
     }
     if (state.detailBodyTab !== "remote") {
-      state.detailBodyTab = "local";
+      state.detailBodyTab = state.detailBodyTab === "diff" ? "diff" : "local";
     }
-    elements.ticketLocalBodyTabButton.classList.toggle("active", state.detailBodyTab !== "remote");
-    elements.ticketLocalBodyTabButton.setAttribute("aria-selected", String(state.detailBodyTab !== "remote"));
+    elements.ticketLocalBodyTabButton.classList.toggle("active", state.detailBodyTab === "local");
+    elements.ticketLocalBodyTabButton.setAttribute("aria-selected", String(state.detailBodyTab === "local"));
     elements.ticketRemoteBodyTabButton.classList.toggle("active", state.detailBodyTab === "remote");
     elements.ticketRemoteBodyTabButton.setAttribute("aria-selected", String(state.detailBodyTab === "remote"));
+    elements.ticketDiffBodyTabButton.classList.toggle("active", state.detailBodyTab === "diff");
+    elements.ticketDiffBodyTabButton.setAttribute("aria-selected", String(state.detailBodyTab === "diff"));
   }
 
   function renderTicketMeta(ticket) {
@@ -324,6 +336,10 @@ export function createTicketDetailModule(ctx) {
       `;
       return;
     }
+    if (ticket?.remote && state.detailBodyTab === "diff") {
+      elements.ticketViewBody.innerHTML = renderBodyDiff(ticket.remote.bodyMarkdown, ticket.bodyMarkdown);
+      return;
+    }
     elements.ticketViewBody.innerHTML = `
       <div class="ticket-detail-body-content">${ticket?.bodyHtml || '<p class="muted">No description</p>'}</div>
       <button type="button" class="ticket-detail-inline-edit-button" data-detail-edit="body">
@@ -337,6 +353,23 @@ export function createTicketDetailModule(ctx) {
       return '<p class="muted">No remote body snapshot.</p>';
     }
     return `<div class="markdown ticket-remote-body-rendered">${bodyHtml}</div>`;
+  }
+
+  function renderBodyDiff(remoteMarkdown, localMarkdown) {
+    const rows = buildBodyDiffRows(remoteMarkdown, localMarkdown);
+    if (!rows.length) {
+      return '<p class="muted">No remote or local body content.</p>';
+    }
+    return `
+      <div class="ticket-body-diff" role="table" aria-label="Remote and local body diff">
+        ${rows.map((row) => `
+          <div class="ticket-body-diff-row ticket-body-diff-row-${row.type}" role="row">
+            <div class="ticket-body-diff-marker" role="cell">${ctx.escapeHtml(row.marker)}</div>
+            <pre class="ticket-body-diff-line" role="cell">${ctx.escapeHtml(row.text || " ")}</pre>
+          </div>
+        `).join("")}
+      </div>
+    `;
   }
 
   async function refreshRemoteTicket() {
@@ -484,4 +517,85 @@ export function createTicketDetailModule(ctx) {
     syncEditorHeader,
     syncTicketDetail,
   };
+}
+
+export function getRemoteSnapshotFreshness(remote, now = Date.now()) {
+  const lastSyncedAt = Date.parse(remote?.lastSyncedAt ?? "");
+  if (!Number.isFinite(lastSyncedAt)) {
+    return {
+      isStale: true,
+      message: "Refresh recommended: last sync is unknown",
+    };
+  }
+  if (now - lastSyncedAt > REMOTE_STALE_THRESHOLD_MS) {
+    return {
+      isStale: true,
+      message: "Refresh recommended: last sync is over 24 hours old",
+    };
+  }
+  return {
+    isStale: false,
+    message: "",
+  };
+}
+
+export function buildBodyDiffRows(remoteMarkdown = "", localMarkdown = "") {
+  const remoteLines = splitMarkdownLines(remoteMarkdown);
+  const localLines = splitMarkdownLines(localMarkdown);
+  if (remoteLines.length * localLines.length > MAX_BODY_DIFF_CELLS) {
+    return buildLinearBodyDiffRows(remoteLines, localLines);
+  }
+  const table = Array.from({ length: remoteLines.length + 1 }, () => Array(localLines.length + 1).fill(0));
+  for (let remoteIndex = remoteLines.length - 1; remoteIndex >= 0; remoteIndex -= 1) {
+    for (let localIndex = localLines.length - 1; localIndex >= 0; localIndex -= 1) {
+      table[remoteIndex][localIndex] = remoteLines[remoteIndex] === localLines[localIndex]
+        ? table[remoteIndex + 1][localIndex + 1] + 1
+        : Math.max(table[remoteIndex + 1][localIndex], table[remoteIndex][localIndex + 1]);
+    }
+  }
+
+  const rows = [];
+  let remoteIndex = 0;
+  let localIndex = 0;
+  while (remoteIndex < remoteLines.length || localIndex < localLines.length) {
+    if (remoteLines[remoteIndex] === localLines[localIndex]) {
+      rows.push({ type: "same", marker: " ", text: remoteLines[remoteIndex] ?? "" });
+      remoteIndex += 1;
+      localIndex += 1;
+    } else if (localIndex >= localLines.length || table[remoteIndex + 1]?.[localIndex] >= table[remoteIndex]?.[localIndex + 1]) {
+      rows.push({ type: "remote", marker: "-", text: remoteLines[remoteIndex] ?? "" });
+      remoteIndex += 1;
+    } else {
+      rows.push({ type: "local", marker: "+", text: localLines[localIndex] ?? "" });
+      localIndex += 1;
+    }
+  }
+  return rows;
+}
+
+function splitMarkdownLines(value) {
+  if (!value) {
+    return [];
+  }
+  return String(value).replace(/\r\n?/g, "\n").split("\n");
+}
+
+function buildLinearBodyDiffRows(remoteLines, localLines) {
+  const rows = [];
+  const length = Math.max(remoteLines.length, localLines.length);
+  for (let index = 0; index < length; index += 1) {
+    const remoteLine = remoteLines[index];
+    const localLine = localLines[index];
+    if (remoteLine === localLine) {
+      rows.push({ type: "same", marker: " ", text: remoteLine ?? "" });
+    } else {
+      if (remoteLine != null) {
+        rows.push({ type: "remote", marker: "-", text: remoteLine });
+      }
+      if (localLine != null) {
+        rows.push({ type: "local", marker: "+", text: localLine });
+      }
+    }
+  }
+  return rows;
 }

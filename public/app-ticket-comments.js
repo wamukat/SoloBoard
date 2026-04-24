@@ -78,7 +78,8 @@ export function createTicketCommentsModule(ctx) {
         (comment) => {
           const canPushRemote = Boolean(state.dialogTicket?.remote);
           const isPushed = comment.sync?.status === "pushed";
-          const localActions = !isPushed;
+          const isPushing = comment.sync?.status === "pushing";
+          const localActions = !isPushed && !isPushing;
           const remoteSync = canPushRemote ? renderRemoteSync(comment) : "";
           return `
           <article class="comment-item" data-comment-id="${comment.id}">
@@ -120,6 +121,9 @@ export function createTicketCommentsModule(ctx) {
   function renderRemoteSync(comment) {
     if (comment.sync?.status === "pushed") {
       return `<span class="comment-sync-pill comment-sync-pill-pushed">${icon("upload")}<span>Pushed</span></span>`;
+    }
+    if (comment.sync?.status === "pushing") {
+      return `<span class="comment-sync-pill comment-sync-pill-pushing">${icon("loader-circle")}<span>Pushing</span></span>`;
     }
     if (comment.sync?.status === "push_failed") {
       const details = renderRemoteSyncErrorDetails(comment);

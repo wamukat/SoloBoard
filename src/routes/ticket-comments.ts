@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import type { RegisterTicketRoutesContext } from "./ticket-route-context.js";
+import { getRemoteErrorMessage, sanitizeRemoteCommentPushError } from "../remote/errors.js";
 
 export function registerTicketCommentRoutes(app: FastifyInstance, ctx: RegisterTicketRoutesContext): void {
   const { db, getIdParam, publishBoardEvent, remoteAdapters, schemas } = ctx;
@@ -92,6 +93,7 @@ export function registerTicketCommentRoutes(app: FastifyInstance, ctx: RegisterT
         200: schemas.commentViewSchema,
         400: schemas.errorSchema,
         404: schemas.errorSchema,
+        409: schemas.errorSchema,
       },
     },
   }, async (request, reply) => {
@@ -115,6 +117,13 @@ export function registerTicketCommentRoutes(app: FastifyInstance, ctx: RegisterT
     if (!adapter) {
       return reply.code(400).send({ error: "unsupported remote provider" });
     }
+    const pushStart = db.startCommentRemotePush(commentId);
+    if (pushStart.sync.status === "pushed") {
+      return reply.code(400).send({ error: "comment already pushed to remote" });
+    }
+    if (!pushStart.started) {
+      return reply.code(409).send({ error: "comment push already in progress" });
+    }
     try {
       const result = await adapter.postComment(remote, comment.bodyMarkdown);
       const updatedSync = db.upsertCommentRemoteSync({
@@ -123,6 +132,18 @@ export function registerTicketCommentRoutes(app: FastifyInstance, ctx: RegisterT
         remoteCommentId: result.remoteCommentId,
         pushedAt: result.pushedAt,
         lastError: null,
+      }, {
+        boardId: ticket.boardId,
+        ticketId: ticket.id,
+        action: "remote_comment_pushed",
+        message: "Remote comment pushed",
+        details: {
+          provider: remote.provider,
+          displayRef: remote.displayRef,
+          commentId,
+          remoteCommentId: result.remoteCommentId,
+          pushedAt: result.pushedAt,
+        },
       });
       publishBoardEvent(ticket.boardId);
       return {
@@ -130,11 +151,22 @@ export function registerTicketCommentRoutes(app: FastifyInstance, ctx: RegisterT
         sync: updatedSync,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : "remote comment push failed";
+      const message = sanitizeRemoteCommentPushError(getRemoteErrorMessage(error));
       const failedSync = db.upsertCommentRemoteSync({
         commentId,
         status: "push_failed",
         lastError: message,
+      }, {
+        boardId: ticket.boardId,
+        ticketId: ticket.id,
+        action: "remote_comment_push_failed",
+        message: "Remote comment push failed",
+        details: {
+          provider: remote.provider,
+          displayRef: remote.displayRef,
+          commentId,
+          error: message,
+        },
       });
       publishBoardEvent(ticket.boardId);
       return reply.code(400).send({ error: failedSync.lastError ?? "remote comment push failed" });

@@ -118,6 +118,11 @@
   color: var(--danger);
 }
 
+.comment-sync-pill-pushing {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text);
+}
+
 .comment-sync-action {
   border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);

@@ -74,13 +74,15 @@ export type TicketRemoteLinkRow = {
 
 export type CommentRemoteSyncRow = {
   comment_id: Id;
-  status: "local_only" | "pushed" | "push_failed";
+  status: CommentRemoteSyncStatus;
   remote_comment_id: string | null;
   pushed_at: string | null;
   last_error: string | null;
   created_at: string;
   updated_at: string;
 };
+
+export type CommentRemoteSyncStatus = "local_only" | "pushing" | "pushed" | "push_failed";
 
 export type ActivityLogRow = {
   id: Id;
@@ -202,7 +204,7 @@ export type TicketRemoteLinkView = {
 
 export type CommentRemoteSyncView = {
   commentId: Id;
-  status: "local_only" | "pushed" | "push_failed";
+  status: CommentRemoteSyncStatus;
   remoteCommentId: string | null;
   pushedAt: string | null;
   lastError: string | null;

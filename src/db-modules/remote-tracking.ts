@@ -4,10 +4,13 @@ import { renderMarkdown } from "../markdown.js";
 import type {
   CommentRemoteSyncRow,
   CommentRemoteSyncView,
+  CommentRemoteSyncStatus,
   Id,
   TicketRemoteLinkRow,
   TicketRemoteLinkView,
 } from "../types.js";
+
+const STALE_COMMENT_REMOTE_PUSH_MS = 15 * 60 * 1000;
 
 export class RemoteIssueAlreadyLinkedError extends Error {
   constructor() {
@@ -41,7 +44,7 @@ export type UpsertTicketRemoteLinkInput = {
 
 export type UpsertCommentRemoteSyncInput = {
   commentId: Id;
-  status: "local_only" | "pushed" | "push_failed";
+  status: CommentRemoteSyncStatus;
   remoteCommentId?: string | null;
   pushedAt?: string | null;
   lastError?: string | null;
@@ -184,6 +187,35 @@ export function upsertCommentRemoteSync(
     now,
   );
   return getCommentRemoteSync(sqlite, input.commentId)!;
+}
+
+export function startCommentRemotePush(
+  sqlite: Database.Database,
+  commentId: Id,
+  now: string,
+): { sync: CommentRemoteSyncView; started: boolean } {
+  assertCommentExists(sqlite, commentId);
+  const tx = sqlite.transaction(() => {
+    const current = getCommentRemoteSync(sqlite, commentId) ?? defaultCommentRemoteSync(commentId);
+    if (current.status === "pushed" || (current.status === "pushing" && !isStaleCommentRemotePush(current, now))) {
+      return { sync: current, started: false };
+    }
+    const sync = upsertCommentRemoteSync(sqlite, {
+      commentId,
+      status: "pushing",
+      remoteCommentId: null,
+      pushedAt: null,
+      lastError: null,
+    }, now);
+    return { sync, started: true };
+  });
+  return tx();
+}
+
+function isStaleCommentRemotePush(sync: CommentRemoteSyncView, now: string): boolean {
+  const updatedAt = Date.parse(sync.updatedAt);
+  const nowTime = Date.parse(now);
+  return Number.isFinite(updatedAt) && Number.isFinite(nowTime) && nowTime - updatedAt > STALE_COMMENT_REMOTE_PUSH_MS;
 }
 
 function mapTicketRemoteLink(row: TicketRemoteLinkRow): TicketRemoteLinkView {

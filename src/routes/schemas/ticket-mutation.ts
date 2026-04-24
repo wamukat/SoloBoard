@@ -63,6 +63,43 @@ export const ticketRemoteImportBodySchema = {
     projectKey: { type: "string", minLength: 1 },
     issueKey: { type: "string", minLength: 1 },
     url: { type: "string", minLength: 1 },
+    postBacklinkComment: { type: "boolean" },
+    backlinkUrl: { type: "string", minLength: 1 },
+  },
+} as const;
+
+export const ticketRemoteImportPreviewResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "provider",
+    "instanceUrl",
+    "resourceType",
+    "projectKey",
+    "issueKey",
+    "displayRef",
+    "url",
+    "title",
+    "state",
+    "remoteUpdatedAt",
+    "duplicate",
+    "existingTicketId",
+    "existingTicketRef",
+  ],
+  properties: {
+    provider: { type: "string" },
+    instanceUrl: { type: "string" },
+    resourceType: { type: "string" },
+    projectKey: { type: "string" },
+    issueKey: { type: "string" },
+    displayRef: { type: "string" },
+    url: { type: "string" },
+    title: { type: "string" },
+    state: { anyOf: [{ type: "string" }, { type: "null" }] },
+    remoteUpdatedAt: { anyOf: [{ type: "string" }, { type: "null" }] },
+    duplicate: { type: "boolean" },
+    existingTicketId: { anyOf: [positiveIntegerSchema, { type: "null" }] },
+    existingTicketRef: { anyOf: [{ type: "string" }, { type: "null" }] },
   },
 } as const;
 

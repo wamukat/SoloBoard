@@ -5,6 +5,7 @@ import { calculateVisibleWindow, takeRoundRobinBatch } from "../public/app-board
 import { getListTickets, renderListActions } from "../public/app-board-list.js";
 import { formatTagLabel, renderTag, tagTextColor } from "../public/app-tags.js";
 import { renderTicketTagChip } from "../public/app-ticket-tag-picker.js";
+import { buildBodyDiffRows, getRemoteSnapshotFreshness } from "../public/app-ticket-detail.js";
 
 test("calculateVisibleWindow returns a bounded overscanned range", () => {
   const window = calculateVisibleWindow(5000, 44, 12, 4400, 600);
@@ -145,6 +146,51 @@ test("renderTicketTagChip keeps the remove cue and full tag name", () => {
   assert.match(html, /title="Remove tag: very-long-tag-name-without-natural-breaks"/);
   assert.match(html, /aria-label="Remove tag: very-long-tag-name-without-natural-breaks"/);
   assert.ok(html.includes('<span class="ticket-tag-chip-text" aria-hidden="true">very-long-tag-name-withou...</span>'));
+});
+
+test("remote snapshot freshness marks old or unknown sync times as stale", () => {
+  assert.deepEqual(
+    getRemoteSnapshotFreshness(
+      { lastSyncedAt: "2026-04-24T00:00:00.000Z", remoteUpdatedAt: "2026-04-23T00:00:00.000Z" },
+      Date.parse("2026-04-24T12:00:00.000Z"),
+    ),
+    { isStale: false, message: "" },
+  );
+  assert.deepEqual(
+    getRemoteSnapshotFreshness(
+      { lastSyncedAt: "2026-04-23T00:00:00.000Z", remoteUpdatedAt: "2026-04-23T00:00:00.000Z" },
+      Date.parse("2026-04-24T12:00:00.000Z"),
+    ),
+    { isStale: true, message: "Refresh recommended: last sync is over 24 hours old" },
+  );
+  assert.deepEqual(
+    getRemoteSnapshotFreshness({ lastSyncedAt: null, remoteUpdatedAt: null }, Date.parse("2026-04-24T12:00:00.000Z")),
+    { isStale: true, message: "Refresh recommended: last sync is unknown" },
+  );
+});
+
+test("body diff rows compare remote and local markdown by line", () => {
+  assert.deepEqual(
+    buildBodyDiffRows("Shared\nRemote only\nTail", "Shared\nLocal only\nTail"),
+    [
+      { type: "same", marker: " ", text: "Shared" },
+      { type: "remote", marker: "-", text: "Remote only" },
+      { type: "local", marker: "+", text: "Local only" },
+      { type: "same", marker: " ", text: "Tail" },
+    ],
+  );
+});
+
+test("body diff rows use bounded work for large markdown bodies", () => {
+  const remote = Array.from({ length: 250 }, (_, index) => `remote ${index}`).join("\n");
+  const local = Array.from({ length: 250 }, (_, index) => `local ${index}`).join("\n");
+  const rows = buildBodyDiffRows(remote, local);
+
+  assert.equal(rows.length, 500);
+  assert.deepEqual(rows.slice(0, 2), [
+    { type: "remote", marker: "-", text: "remote 0" },
+    { type: "local", marker: "+", text: "local 0" },
+  ]);
 });
 
 test("perf seed requires overwrite flag when board already exists", async () => {

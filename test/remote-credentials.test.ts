@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { EnvRemoteCredentialResolver, parseCredentialMap } from "../src/remote/credentials.js";
 import { GithubIssueAdapter } from "../src/remote/github-adapter.js";
 import { GitlabIssueAdapter } from "../src/remote/gitlab-adapter.js";
+import { fetchRemoteJson } from "../src/remote/http.js";
 import { RedmineIssueAdapter } from "../src/remote/redmine-adapter.js";
 
 test("env remote credential resolver reads exact and wildcard scoped credentials", () => {
@@ -23,6 +24,68 @@ test("env remote credential resolver reads exact and wildcard scoped credentials
     token: "redmine-token",
   });
   assert.equal(resolver.getCredential({ provider: "jira", instanceUrl: "https://jira.example.test" }), null);
+});
+
+test("env remote credential resolver preserves Redmine subpath scopes", () => {
+  const resolver = new EnvRemoteCredentialResolver({
+    KANBALONE_REMOTE_CREDENTIALS: JSON.stringify({
+      "redmine:https://redmine.example.test/redmine": "redmine-subpath-token",
+      "github:https://github.com/acme/repo": "github-origin-token",
+      "gitlab:https://gitlab.example.test/group/project": "gitlab-origin-token",
+    }),
+  });
+
+  assert.deepEqual(resolver.getCredential({ provider: "redmine", instanceUrl: "https://redmine.example.test/redmine" }), {
+    type: "token",
+    token: "redmine-subpath-token",
+  });
+  assert.equal(resolver.getCredential({ provider: "redmine", instanceUrl: "https://redmine.example.test/other" }), null);
+  assert.deepEqual(resolver.getCredential({ provider: "github", instanceUrl: "https://github.com" }), {
+    type: "token",
+    token: "github-origin-token",
+  });
+  assert.deepEqual(resolver.getCredential({ provider: "gitlab", instanceUrl: "https://gitlab.example.test" }), {
+    type: "token",
+    token: "gitlab-origin-token",
+  });
+});
+
+test("remote credential scopes preserve Redmine paths and keep GitHub and GitLab origins", async () => {
+  const { getConfiguredCredentialScopes } = await import("../src/remote/credentials.js");
+  assert.deepEqual(
+    getConfiguredCredentialScopes({
+      KANBALONE_REMOTE_CREDENTIALS: JSON.stringify({
+        "redmine:https://redmine.example.test/redmine/": "redmine-token",
+        "github:https://github.com/acme/repo": "github-token",
+        "gitlab:https://gitlab.example.test/group/project": "gitlab-token",
+      }),
+    }),
+    [
+      { provider: "redmine", instanceUrl: "https://redmine.example.test/redmine", wildcard: false },
+      { provider: "github", instanceUrl: "https://github.com", wildcard: false },
+      { provider: "gitlab", instanceUrl: "https://gitlab.example.test", wildcard: false },
+    ],
+  );
+});
+
+test("remote credentials do not use GitHub or GitLab wildcard tokens for arbitrary origins", async () => {
+  const { getConfiguredCredentialProviders } = await import("../src/remote/credentials.js");
+  const env = {
+    KANBALONE_REMOTE_CREDENTIALS: JSON.stringify({
+      "github:*": "github-wildcard-token",
+      "gitlab:*": "gitlab-wildcard-token",
+      "redmine:*": "redmine-wildcard-token",
+    }),
+  };
+  const resolver = new EnvRemoteCredentialResolver(env);
+
+  assert.equal(resolver.getCredential({ provider: "github", instanceUrl: "https://github.example.test" }), null);
+  assert.equal(resolver.getCredential({ provider: "gitlab", instanceUrl: "https://gitlab.example.test" }), null);
+  assert.deepEqual(resolver.getCredential({ provider: "redmine", instanceUrl: "https://redmine.example.test" }), {
+    type: "token",
+    token: "redmine-wildcard-token",
+  });
+  assert.deepEqual(getConfiguredCredentialProviders(env), ["redmine"]);
 });
 
 test("env remote credential resolver keeps GITHUB_TOKEN as a legacy fallback", () => {
@@ -60,6 +123,65 @@ test("remote credential map rejects malformed values", () => {
   );
 });
 
+test("remote fetch retries transient HTTP failures", async () => {
+  let calls = 0;
+  const result = await fetchRemoteJson<{ ok: boolean }>("https://remote.example.test/issues/1", {}, {
+    providerLabel: "Remote",
+    maxRetries: 1,
+    retryDelayMs: 0,
+    fetchImpl: (async () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response("temporarily unavailable", { status: 503 });
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch,
+  });
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(calls, 2);
+});
+
+test("remote fetch does not retry non-transient HTTP failures", async () => {
+  let calls = 0;
+  await assert.rejects(
+    () =>
+      fetchRemoteJson("https://remote.example.test/issues/1", {}, {
+        providerLabel: "Remote",
+        maxRetries: 2,
+        retryDelayMs: 0,
+        fetchImpl: (async () => {
+          calls += 1;
+          return new Response("bad token", { status: 401 });
+        }) as typeof fetch,
+      }),
+    /Remote request failed: 401 bad token/,
+  );
+
+  assert.equal(calls, 1);
+});
+
+test("remote fetch applies request timeout", async () => {
+  await assert.rejects(
+    () =>
+      fetchRemoteJson("https://remote.example.test/issues/1", {}, {
+        providerLabel: "Remote",
+        timeoutMs: 1,
+        maxRetries: 0,
+        fetchImpl: (async (_input, init) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("aborted", "AbortError"));
+            });
+          })) as typeof fetch,
+      }),
+    /Remote request timed out after 1ms/,
+  );
+});
+
 test("github adapter applies resolved token credentials to requests", async () => {
   const originalFetch = globalThis.fetch;
   let requestedAuthorization: string | null = null;
@@ -91,6 +213,48 @@ test("github adapter applies resolved token credentials to requests", async () =
 
     assert.equal(issue.displayRef, "acme/kanbalone#123");
     assert.equal(requestedAuthorization, "Bearer resolved-token");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("github adapter does not retry comment posts", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return new Response("created but response failed", { status: 503 });
+  }) as typeof fetch;
+
+  try {
+    const adapter = new GithubIssueAdapter({
+      getCredential() {
+        return { type: "token", token: "resolved-token" };
+      },
+    });
+    await assert.rejects(
+      () =>
+        adapter.postComment({
+          ticketId: 1,
+          provider: "github",
+          instanceUrl: "https://github.com",
+          resourceType: "issue",
+          projectKey: "acme/kanbalone",
+          issueKey: "123",
+          displayRef: "acme/kanbalone#123",
+          url: "https://github.com/acme/kanbalone/issues/123",
+          title: "Remote issue",
+          bodyMarkdown: "Remote body",
+          bodyHtml: "<p>Remote body</p>",
+          state: "open",
+          remoteUpdatedAt: "2026-04-23T00:00:00.000Z",
+          lastSyncedAt: "2026-04-23T00:00:01.000Z",
+          createdAt: "2026-04-23T00:00:01.000Z",
+          updatedAt: "2026-04-23T00:00:01.000Z",
+        }, "Progress"),
+      /GitHub request failed: 503 created but response failed/,
+    );
+    assert.equal(calls, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

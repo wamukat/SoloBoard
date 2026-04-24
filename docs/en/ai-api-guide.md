@@ -96,7 +96,9 @@ The skill is installed on the host because Codex runs outside the Kanbalone cont
 - `title` is the read-only title imported from the remote issue.
 - `bodyMarkdown` is the local body.
 - `remote.bodyMarkdown` / `remote.bodyHtml` are remote snapshots.
+- Use `POST /api/boards/:boardId/remote-import/preview` to resolve and check duplicate status before import.
 - Use `POST /api/boards/:boardId/remote-import` to create a remote tracked ticket.
+- Set `postBacklinkComment: true` on remote import only when you want Kanbalone to attempt one remote backlink comment. `backlinkUrl` is optional because Kanbalone may not have a public URL; when supplied it must be an absolute `http` or `https` URL. The provider token needs comment/write permission.
 - Use `POST /api/tickets/:ticketId/remote-refresh` to update the remote snapshot.
 
 ### 9. `/api/meta` Exposes Remote Provider Availability
@@ -105,6 +107,15 @@ The skill is installed on the host because Codex runs outside the Kanbalone cont
 - Each entry has `id` and `hasCredential`.
 - The UI uses this to show remote import only when at least one credential exists and to list configured providers only.
 - API clients can use the same metadata to decide which provider workflows to surface.
+
+### 10. `/api/remote-diagnostics` Checks Remote Credentials
+
+- `GET /api/remote-diagnostics` returns configured/missing credential status per provider.
+- `POST /api/remote-diagnostics` accepts a provider plus remote issue lookup fields and checks whether the configured credential can read that issue.
+- Diagnostic results are token-safe and return statuses such as `reachable`, `auth_failed`, `permission_failed`, `not_found`, or `missing_credential`.
+- Diagnostic checks require an exact credential scope for the target instance; wildcard credentials are not used for user-supplied diagnostic URLs.
+- Credential scopes are normalized per provider: GitHub and GitLab use the URL origin, while Redmine keeps the path so subpath instances such as `https://redmine.example.test/redmine` can use separate credentials.
+- Wildcard credentials are not used for GitHub or GitLab. Configure an explicit origin credential for each GitHub Enterprise or self-hosted GitLab instance.
 
 ## Common Patterns
 
