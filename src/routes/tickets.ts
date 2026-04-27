@@ -12,6 +12,7 @@ import type {
   RegisterTicketRoutesContext,
   TicketMoveBody,
   TicketMutationBody,
+  TicketPositionBody,
   TicketTransitionBody,
 } from "./ticket-route-context.js";
 
@@ -278,6 +279,43 @@ export function registerTicketRoutes(app: FastifyInstance, ctx: RegisterTicketRo
       return serializeTicket(ticket);
     } catch (error) {
       const message = error instanceof Error ? error.message : "ticket transition failed";
+      const code = message === "Ticket not found" ? 404 : 400;
+      return reply.code(code).send({ error: message.toLowerCase() });
+    }
+  });
+
+  app.patch("/api/tickets/:ticketId/position", {
+    schema: {
+      params: schemas.idParamsSchema("ticketId"),
+      body: schemas.ticketPositionBodySchema,
+      response: {
+        200: {
+          type: "object",
+          additionalProperties: true,
+        },
+        400: schemas.errorSchema,
+        404: schemas.errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const body = request.body as TicketPositionBody;
+    if (!body?.laneId) {
+      return reply.code(400).send({ error: "laneId is required" });
+    }
+    try {
+      const ticket = db.positionTicket(
+        getIdParam(request.params, "ticketId"),
+        {
+          laneId: body.laneId,
+          position: body.position,
+          beforeTicketId: body.beforeTicketId,
+          afterTicketId: body.afterTicketId,
+        },
+      );
+      publishBoardEvent(ticket.boardId);
+      return serializeTicket(ticket);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "ticket position failed";
       const code = message === "Ticket not found" ? 404 : 400;
       return reply.code(code).send({ error: message.toLowerCase() });
     }

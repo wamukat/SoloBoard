@@ -826,6 +826,46 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
+  /api/tickets/{ticketId}/position:
+    patch:
+      summary: Move ticket within its board by lane and position
+      description: Moves one ticket to a lane on the same board and inserts it near the requested neighboring tickets, or at the requested numeric position when no anchors are provided. Other tickets in the affected lanes are reindexed server-side.
+      operationId: positionTicket
+      parameters:
+        - $ref: "#/components/parameters/TicketId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                laneId:
+                  type: integer
+                position:
+                  type: integer
+                  minimum: 0
+                beforeTicketId:
+                  anyOf:
+                    - type: integer
+                    - type: "null"
+                afterTicketId:
+                  anyOf:
+                    - type: integer
+                    - type: "null"
+              required: [laneId]
+      responses:
+        "200":
+          description: Repositioned ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ticket"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
   /api/tickets/{ticketId}/remote-refresh:
     post:
       summary: Refresh remote issue snapshot

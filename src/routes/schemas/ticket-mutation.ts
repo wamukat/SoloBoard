@@ -52,6 +52,22 @@ export const ticketMoveBodySchema = {
   },
 } as const;
 
+export const ticketPositionBodySchema = {
+  type: "object",
+  required: ["laneId"],
+  additionalProperties: false,
+  properties: {
+    laneId: positiveIntegerSchema,
+    position: { type: "integer", minimum: 0 },
+    beforeTicketId: {
+      anyOf: [positiveIntegerSchema, { type: "null" }],
+    },
+    afterTicketId: {
+      anyOf: [positiveIntegerSchema, { type: "null" }],
+    },
+  },
+} as const;
+
 export const ticketRemoteImportBodySchema = {
   type: "object",
   required: ["provider", "laneId"],

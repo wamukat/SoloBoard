@@ -98,7 +98,11 @@ test("kanban lane create rename delete and reorder are wired", async ({ page }) 
         document.querySelector(`.ticket-list[data-lane-id="${targetLaneId}"]`),
       ), { targetLaneId: deltaLane.id, ticketId: movingTicket.id });
     await Promise.all([
-      page.waitForResponse((response) => response.url().endsWith(`/api/boards/${boardPayload.board.id}/tickets/reorder`) && response.status() === 200),
+      page.waitForResponse((response) =>
+        response.url().endsWith(`/api/tickets/${movingTicket.id}/position`) &&
+        response.request().method() === "PATCH" &&
+        response.status() === 200,
+      ),
       page.evaluate(({ targetLaneId, ticketId }) => {
         const card = document.querySelector(`.ticket-card[data-ticket-id="${ticketId}"]`);
         const targetList = document.querySelector(`.ticket-list[data-lane-id="${targetLaneId}"]`);
@@ -171,6 +175,96 @@ test("kanban lane create rename delete and reorder are wired", async ({ page }) 
     expect((await deleteResponse).status()).toBe(204);
     await expect(page.locator("#ux-dialog")).not.toHaveJSProperty("open", true);
     await expect(page.locator(".lane-title", { hasText: "Gamma" })).toHaveCount(0);
+  } finally {
+    await page.close();
+    await app.close();
+  }
+});
+
+test("kanban ticket drag persists when inactive tickets are hidden", async ({ page }) => {
+  const app = buildApp({
+    dbFile: createDbFile(),
+    staticDir: path.join(process.cwd(), "public"),
+  });
+  const port = await getFreePort();
+  await app.listen({ host: "127.0.0.1", port });
+
+  try {
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const boardResponse = await page.request.post(`${baseUrl}/api/boards`, {
+      data: { name: "Hidden Inactive DnD", laneNames: ["Todo", "Done"] },
+    });
+    expect(boardResponse.status()).toBe(201);
+    const boardPayload = await boardResponse.json();
+    const todoLane = boardPayload.lanes[0];
+    const doneLane = boardPayload.lanes[1];
+    const movingResponse = await page.request.post(`${baseUrl}/api/boards/${boardPayload.board.id}/tickets`, {
+      data: { laneId: todoLane.id, title: "Move with hidden inactive" },
+    });
+    expect(movingResponse.status()).toBe(201);
+    const movingTicket = await movingResponse.json();
+    const doneHiddenTicketIds = [];
+    for (let index = 0; index < 10; index += 1) {
+      const response = await page.request.post(`${baseUrl}/api/boards/${boardPayload.board.id}/tickets`, {
+        data: { laneId: doneLane.id, title: `Resolved hidden ${index}`, isResolved: true },
+      });
+      expect(response.status()).toBe(201);
+      doneHiddenTicketIds.push((await response.json()).id);
+    }
+    const anchorResponse = await page.request.post(`${baseUrl}/api/boards/${boardPayload.board.id}/tickets`, {
+      data: { laneId: doneLane.id, title: "Done anchor" },
+    });
+    expect(anchorResponse.status()).toBe(201);
+    const anchorTicket = await anchorResponse.json();
+
+    await page.goto(`${baseUrl}/boards/${boardPayload.board.id}`);
+    await expect(page.getByRole("button", { name: "Move with hidden inactive" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Done anchor" })).toBeVisible();
+    await page.waitForFunction(({ targetLaneId, ticketId }) =>
+      Boolean(
+        document.querySelector(`.ticket-card[data-ticket-id="${ticketId}"]`) &&
+        document.querySelector(`.ticket-list[data-lane-id="${targetLaneId}"]`),
+      ), { targetLaneId: doneLane.id, ticketId: movingTicket.id });
+    await Promise.all([
+      page.waitForResponse((response) =>
+        response.url().endsWith(`/api/tickets/${movingTicket.id}/position`) &&
+        response.request().method() === "PATCH" &&
+        response.status() === 200,
+      ),
+      page.evaluate(({ targetLaneId, ticketId }) => {
+        const card = document.querySelector(`.ticket-card[data-ticket-id="${ticketId}"]`);
+        const targetList = document.querySelector(`.ticket-list[data-lane-id="${targetLaneId}"]`);
+        const anchor = [...targetList?.querySelectorAll(".ticket-card[data-ticket-id]") ?? []].at(-1);
+        if (!card || !targetList) {
+          throw new Error("Hidden inactive drag fixture is missing");
+        }
+        const targetBox = (anchor ?? targetList).getBoundingClientRect();
+        const dataTransfer = new DataTransfer();
+        card.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer }));
+        targetList.dispatchEvent(
+          new DragEvent("dragover", {
+            bubbles: true,
+            cancelable: true,
+            clientX: targetBox.left + 8,
+            clientY: targetBox.bottom + 12,
+            dataTransfer,
+          }),
+        );
+        targetList.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+      }, { targetLaneId: doneLane.id, ticketId: movingTicket.id }),
+    ]);
+
+    const ticketResponse = await page.request.get(`${baseUrl}/api/tickets/${movingTicket.id}`);
+    expect(ticketResponse.status()).toBe(200);
+    expect((await ticketResponse.json()).laneId).toBe(doneLane.id);
+    const ticketsResponse = await page.request.get(`${baseUrl}/api/boards/${boardPayload.board.id}/tickets?archived=all`);
+    expect(ticketsResponse.status()).toBe(200);
+    const doneTicketIds = (await ticketsResponse.json()).tickets
+      .filter((ticket: { laneId: number }) => ticket.laneId === doneLane.id)
+      .map((ticket: { id: number }) => ticket.id);
+    expect(doneTicketIds).toEqual([...doneHiddenTicketIds, anchorTicket.id, movingTicket.id]);
+    await page.reload();
+    await expect(page.locator(".lane", { has: page.getByRole("button", { name: "Move with hidden inactive" }) }).locator(".lane-title")).toHaveText("Done");
   } finally {
     await page.close();
     await app.close();

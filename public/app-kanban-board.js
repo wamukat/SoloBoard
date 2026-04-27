@@ -183,12 +183,13 @@ export function createKanbanBoardModule(ctx, options) {
     });
 
     list.addEventListener("drop", async (event) => {
-      if (!document.querySelector(".ticket-card.dragging")) {
+      const dragging = document.querySelector(".ticket-card.dragging");
+      if (!dragging) {
         return;
       }
       event.preventDefault();
       clearDropLaneFeedback();
-      await persistTicketOrder();
+      await persistTicketPosition(dragging, list);
     });
 
     list.addEventListener("dragleave", (event) => {
@@ -342,22 +343,31 @@ export function createKanbanBoardModule(ctx, options) {
     ).element;
   }
 
-  async function persistTicketOrder() {
+  async function persistTicketPosition(card, list) {
     if (!state.boardDetail) {
       return;
     }
-    const items = [...document.querySelectorAll(".ticket-list")].flatMap((list) =>
-      [...list.querySelectorAll(".ticket-card[data-ticket-id]")].map((card, index) => ({
-        ticketId: Number(card.dataset.ticketId),
-        laneId: Number(list.dataset.laneId),
-        position: index,
-      })),
-    );
-    await ctx.api(`/api/boards/${state.activeBoardId}/tickets/reorder`, {
-      method: "POST",
-      body: JSON.stringify({ items }),
-    });
-    await ctx.refreshBoardDetail();
+    const ticketId = Number(card.dataset.ticketId);
+    const laneId = Number(list.dataset.laneId);
+    const cards = [...list.querySelectorAll(".ticket-card[data-ticket-id]")];
+    const position = cards.indexOf(card);
+    const beforeTicketId = cards[position + 1]?.dataset.ticketId ? Number(cards[position + 1].dataset.ticketId) : null;
+    const afterTicketId = cards[position - 1]?.dataset.ticketId ? Number(cards[position - 1].dataset.ticketId) : null;
+    try {
+      await ctx.api(`/api/tickets/${ticketId}/position`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          laneId,
+          position: Math.max(0, position),
+          beforeTicketId,
+          afterTicketId,
+        }),
+      });
+      await ctx.refreshBoardDetail();
+    } catch (error) {
+      await ctx.refreshBoardDetail();
+      ctx.showToast(error.message, "error");
+    }
   }
 
   async function persistLaneOrder() {

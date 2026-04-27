@@ -2600,6 +2600,120 @@ test("reordering visible tickets preserves stable archived positions on restore"
   db.close();
 });
 
+test("positioning one ticket moves it without requiring hidden board tickets", () => {
+  const db = new KanbanDb(createDbFile());
+  const board = db.createBoard({ name: "Single Position Board", laneNames: ["todo", "done"] });
+  const todoLaneId = board.lanes[0].id;
+  const doneLaneId = board.lanes[1].id;
+  const first = db.createTicket({ boardId: board.board.id, laneId: todoLaneId, title: "First" });
+  const moving = db.createTicket({ boardId: board.board.id, laneId: todoLaneId, title: "Moving" });
+  const after = db.createTicket({ boardId: board.board.id, laneId: doneLaneId, title: "After" });
+  for (let index = 0; index < 10; index += 1) {
+    db.createTicket({ boardId: board.board.id, laneId: todoLaneId, title: `Resolved ${index}`, isResolved: true });
+  }
+
+  const moved = db.positionTicket(moving.id, { laneId: doneLaneId, position: 0 });
+
+  assert.equal(moved.laneId, doneLaneId);
+  assert.deepEqual(
+    db.listTickets(board.board.id, { includeArchived: true })
+      .filter((ticket) => ticket.laneId === doneLaneId)
+      .map((ticket) => ({ id: ticket.id, position: ticket.position })),
+    [
+      { id: moving.id, position: 0 },
+      { id: after.id, position: 1 },
+    ],
+  );
+  assert.equal(db.getTicket(first.id)?.laneId, todoLaneId);
+
+  db.close();
+});
+
+test("positioning one ticket honors visible anchors when target lane has hidden inactive tickets", () => {
+  const db = new KanbanDb(createDbFile());
+  const board = db.createBoard({ name: "Anchored Position Board", laneNames: ["todo", "done"] });
+  const todoLaneId = board.lanes[0].id;
+  const doneLaneId = board.lanes[1].id;
+  const moving = db.createTicket({ boardId: board.board.id, laneId: todoLaneId, title: "Moving" });
+  const resolved = Array.from({ length: 10 }, (_, index) =>
+    db.createTicket({ boardId: board.board.id, laneId: doneLaneId, title: `Resolved ${index}`, isResolved: true })
+  );
+  const anchor = db.createTicket({ boardId: board.board.id, laneId: doneLaneId, title: "Visible anchor" });
+
+  db.positionTicket(moving.id, {
+    laneId: doneLaneId,
+    position: 4,
+    afterTicketId: anchor.id,
+  });
+
+  assert.deepEqual(
+    db.listTickets(board.board.id, { includeArchived: true })
+      .filter((ticket) => ticket.laneId === doneLaneId)
+      .map((ticket) => ticket.id),
+    [...resolved.map((ticket) => ticket.id), anchor.id, moving.id],
+  );
+
+  db.close();
+});
+
+test("ticket position endpoint validates lane and anchor scope", async () => {
+  const app = buildApp({ dbFile: createDbFile() });
+  const boardResponse = await app.inject({
+    method: "POST",
+    url: "/api/boards",
+    payload: { name: "Position API Board", laneNames: ["todo", "done"] },
+  });
+  const board = boardResponse.json() as { board: { id: number }; lanes: Array<{ id: number }> };
+  const otherBoardResponse = await app.inject({
+    method: "POST",
+    url: "/api/boards",
+    payload: { name: "Other Position Board", laneNames: ["todo"] },
+  });
+  const otherBoard = otherBoardResponse.json() as { board: { id: number }; lanes: Array<{ id: number }> };
+  const ticketResponse = await app.inject({
+    method: "POST",
+    url: `/api/boards/${board.board.id}/tickets`,
+    payload: { laneId: board.lanes[0].id, title: "Moving" },
+  });
+  const ticket = ticketResponse.json() as { id: number };
+  const otherLaneTicketResponse = await app.inject({
+    method: "POST",
+    url: `/api/boards/${otherBoard.board.id}/tickets`,
+    payload: { laneId: otherBoard.lanes[0].id, title: "Other" },
+  });
+  const otherLaneTicket = otherLaneTicketResponse.json() as { id: number };
+
+  const invalidBody = await app.inject({
+    method: "PATCH",
+    url: `/api/tickets/${ticket.id}/position`,
+    payload: { position: 0 },
+  });
+  assert.equal(invalidBody.statusCode, 400);
+
+  const crossBoardLane = await app.inject({
+    method: "PATCH",
+    url: `/api/tickets/${ticket.id}/position`,
+    payload: { laneId: otherBoard.lanes[0].id, position: 0 },
+  });
+  assert.equal(crossBoardLane.statusCode, 400);
+
+  const crossBoardAnchor = await app.inject({
+    method: "PATCH",
+    url: `/api/tickets/${ticket.id}/position`,
+    payload: { laneId: board.lanes[1].id, afterTicketId: otherLaneTicket.id },
+  });
+  assert.equal(crossBoardAnchor.statusCode, 400);
+
+  const missingTicket = await app.inject({
+    method: "PATCH",
+    url: "/api/tickets/999999/position",
+    payload: { laneId: board.lanes[1].id, position: 0 },
+  });
+  assert.equal(missingTicket.statusCode, 404);
+
+  await app.close();
+});
+
 test("deleting a lane compacts remaining lane positions", () => {
   const db = new KanbanDb(createDbFile());
   const board = db.createBoard({ name: "Lane Position Board", laneNames: ["Todo", "Doing", "Review", "Done"] });

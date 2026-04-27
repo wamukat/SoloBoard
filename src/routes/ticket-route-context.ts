@@ -26,6 +26,13 @@ export type TicketMoveBody = {
   laneId?: number;
 };
 
+export type TicketPositionBody = {
+  laneId?: number;
+  position?: number;
+  beforeTicketId?: number | null;
+  afterTicketId?: number | null;
+};
+
 export type TicketRoutesSchemas = {
   activityLogsResponseSchema: unknown;
   bulkArchiveTicketsBodySchema: unknown;
@@ -44,6 +51,7 @@ export type TicketRoutesSchemas = {
   ticketCreateBodySchema: unknown;
   ticketListQuerySchema: unknown;
   ticketMoveBodySchema: unknown;
+  ticketPositionBodySchema: unknown;
   ticketRemoteImportBodySchema: unknown;
   ticketRelationsSchema: unknown;
   ticketSchema: unknown;

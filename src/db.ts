@@ -50,6 +50,7 @@ import {
   createTicket as createTicketRecord,
   deleteTicket as deleteTicketRecord,
   moveTicket as moveTicketRecord,
+  positionTicket as positionTicketRecord,
   reorderTickets as reorderTicketRecords,
   transitionTicket as transitionTicketRecord,
   updateTicket as updateTicketRecord,
@@ -58,6 +59,7 @@ import {
   type BulkTransitionTicketsInput,
   type CreateTicketInput,
   type MoveTicketInput,
+  type PositionTicketInput,
   type ReorderTicketInput,
   type UpdateTicketInput,
 } from "./db-modules/ticket-mutations.js";
@@ -258,6 +260,10 @@ export class KanbanDb {
 
   moveTicket(ticketId: Id, input: MoveTicketInput): TicketView {
     return moveTicketRecord(this.sqlite, ticketId, input, this.now.bind(this));
+  }
+
+  positionTicket(ticketId: Id, input: PositionTicketInput): TicketView {
+    return positionTicketRecord(this.sqlite, ticketId, input, this.now.bind(this));
   }
 
   deleteTicket(ticketId: Id): void {
