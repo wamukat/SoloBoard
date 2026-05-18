@@ -42,6 +42,33 @@ test("renderMarkdown highlights code blocks and preserves table markup", () => {
   assert.match(html, /hljs-keyword/);
 });
 
+test("renderMarkdown links plain local ticket references", () => {
+  const html = renderMarkdown("Depends on #123, fixes (#456), but not gh#789.");
+
+  assert.match(html, /Depends on <a href="\/tickets\/123">#123<\/a>/);
+  assert.match(html, /fixes \(<a href="\/tickets\/456">#456<\/a>\)/);
+  assert.match(html, /but not gh#789/);
+});
+
+test("renderMarkdown does not link ticket references inside links or code", () => {
+  const html = renderMarkdown([
+    "[existing #123](https://example.com/issues/123)",
+    "",
+    "`#456`",
+    "",
+    "```",
+    "#789",
+    "```",
+  ].join("\n"));
+
+  assert.match(html, /<a href="https:\/\/example.com\/issues\/123">existing #123<\/a>/);
+  assert.match(html, /<code>#456<\/code>/);
+  assert.match(html, /<pre><code class="hljs">.*#789.*<\/code><\/pre>/s);
+  assert.doesNotMatch(html, /href="\/tickets\/123"/);
+  assert.doesNotMatch(html, /href="\/tickets\/456"/);
+  assert.doesNotMatch(html, /href="\/tickets\/789"/);
+});
+
 test("mapActivityLog tolerates invalid details json", () => {
   const activity = mapActivityLog({
     id: 1,
