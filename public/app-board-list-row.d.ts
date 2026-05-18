@@ -37,5 +37,6 @@ export function renderListRow(
     renderTicketStatusIcons(ticket: ListRowTicket): string;
     rowHeight: number;
     selectedTicketIds: number[];
+    showHierarchy?: boolean;
   },
 ): string;

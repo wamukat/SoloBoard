@@ -257,7 +257,7 @@ OS やブラウザの外観設定がダークモードの場合、自動的に�
 docker run --rm \
   -p 3000:3000 \
   -v kanbalone-data:/app/data \
-  ghcr.io/wamukat/kanbalone:v0.9.34
+  ghcr.io/wamukat/kanbalone:v0.9.35
 ```
 
 ブラウザで開きます。

@@ -54,6 +54,66 @@ test("getListTickets keeps parent tickets before children and sorts high priorit
   );
 });
 
+test("getListTickets sorts list rows by id tags and priority when requested", () => {
+  const tickets = [
+    { id: 7, priority: 2, parentTicketId: null, tags: [{ name: "release" }] },
+    { id: 2, priority: 4, parentTicketId: null, tags: [{ name: "backend" }] },
+    { id: 5, priority: 1, parentTicketId: null, tags: [] },
+    { id: 3, priority: 3, parentTicketId: null, tags: [{ name: "Backend" }, { name: "urgent" }] },
+    { id: 9, priority: 2, parentTicketId: null, tags: [{ name: "release" }] },
+  ];
+
+  assert.deepEqual(
+    getListTickets(tickets, { key: "id", direction: "asc" }).map((entry) => entry.ticket.id),
+    [2, 3, 5, 7, 9],
+  );
+  assert.deepEqual(
+    getListTickets(tickets, { key: "id", direction: "desc" }).map((entry) => entry.ticket.id),
+    [9, 7, 5, 3, 2],
+  );
+  assert.deepEqual(
+    getListTickets(tickets, { key: "tags", direction: "asc" }).map((entry) => entry.ticket.id),
+    [2, 3, 7, 9, 5],
+  );
+  assert.deepEqual(
+    getListTickets(tickets, { key: "tags", direction: "desc" }).map((entry) => entry.ticket.id),
+    [7, 9, 3, 2, 5],
+  );
+  assert.deepEqual(
+    getListTickets(tickets, { key: "priority", direction: "asc" }).map((entry) => entry.ticket.id),
+    [5, 7, 9, 3, 2],
+  );
+  assert.deepEqual(
+    getListTickets(tickets, { key: "priority", direction: "desc" }).map((entry) => entry.ticket.id),
+    [2, 3, 7, 9, 5],
+  );
+});
+
+test("getListTickets flattens hierarchy while applying list sort", () => {
+  const tickets = [
+    { id: 10, priority: 1, parentTicketId: null, tags: [{ name: "z" }] },
+    { id: 1, priority: 4, parentTicketId: 10, tags: [{ name: "a" }] },
+    { id: 3, priority: 2, parentTicketId: null, tags: [{ name: "b" }] },
+  ];
+
+  assert.deepEqual(
+    getListTickets(tickets, { key: "id", direction: "asc" }).map((entry) => [entry.ticket.id, entry.indent]),
+    [
+      [1, 0],
+      [3, 0],
+      [10, 0],
+    ],
+  );
+  assert.deepEqual(
+    getListTickets(tickets).map((entry) => [entry.ticket.id, entry.indent]),
+    [
+      [3, 0],
+      [10, 0],
+      [1, 1],
+    ],
+  );
+});
+
 test("renderListActions exposes only relevant bulk actions", () => {
   const tickets = [
     { id: 1, isResolved: false, isArchived: false },
@@ -128,6 +188,49 @@ test("renderListRow places remote references after normal tags in the Tags colum
   assert.match(html, /owner\/repo#123/);
   assert.match(html, /list-ticket-external-ref/);
   assert.match(html, /source\/repo#456/);
+});
+
+test("renderListRow can hide hierarchy affordances for sorted list rows", () => {
+  const html = renderListRow(
+    {
+      indent: 0,
+      ticket: {
+        id: 2,
+        laneId: 2,
+        parentTicketId: 1,
+        title: "Child ticket",
+        blockerIds: [],
+        relatedIds: [],
+        tags: [],
+        priority: 2,
+        isResolved: false,
+        isArchived: false,
+      },
+    },
+    {
+      boardTickets: [{
+        id: 1,
+        laneId: 2,
+        parentTicketId: null,
+        title: "Parent ticket",
+        blockerIds: [],
+        relatedIds: [],
+        tags: [],
+        priority: 2,
+        isResolved: false,
+        isArchived: false,
+      }],
+      escapeHtml,
+      lanes: [{ id: 2, name: "Todo" }],
+      renderTicketStatusIcons: () => "",
+      rowHeight: 64,
+      selectedTicketIds: [],
+      showHierarchy: false,
+    },
+  );
+
+  assert.doesNotMatch(html, /ticket-hierarchy-icon/);
+  assert.doesNotMatch(html, /indent-1/);
 });
 
 test("tagTextColor selects readable foreground colors", () => {

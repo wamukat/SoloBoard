@@ -23,7 +23,7 @@ export function renderListRow(entry, options) {
     <div class="list-row ${ticket.isResolved ? "resolved" : ""} ${ticket.isArchived ? "archived" : ""}" style="height:${options.rowHeight}px">
       <input type="checkbox" data-list-ticket-id="${ticket.id}" ${options.selectedTicketIds.includes(ticket.id) ? "checked" : ""} />
       <div class="list-ticket-title-cell indent-${indent}">
-        ${renderTicketHierarchyIcon(ticket, options.boardTickets, { selectableParent: true })}
+        ${options.showHierarchy === false ? "" : renderTicketHierarchyIcon(ticket, options.boardTickets, { selectableParent: true })}
         <button type="button" class="list-ticket-link" data-open-ticket-id="${ticket.id}">
           <span class="ticket-id">#${ticket.id}</span>
           <span class="list-ticket-title">${options.escapeHtml(ticket.title)}</span>

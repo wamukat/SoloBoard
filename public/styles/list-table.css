@@ -41,6 +41,48 @@
   margin: 0;
 }
 
+.list-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.list-sort-button:hover,
+.list-sort-button.active {
+  color: var(--text);
+}
+
+.list-sort-button > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-sort-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  color: var(--accent);
+}
+
+.list-sort-indicator .icon {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
 .list-row input[type="checkbox"] {
   justify-self: start;
   width: 1rem;

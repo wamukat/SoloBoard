@@ -12,6 +12,7 @@ export function createKanbanBoardModule(ctx, options) {
   let kanbanRenderToken = 0;
   let kanbanNextLaneIndex = 0;
   let laneDragPreview = null;
+  const laneScrollTopById = new Map();
 
   function cancelPendingRender() {
     kanbanRenderToken += 1;
@@ -21,6 +22,7 @@ export function createKanbanBoardModule(ctx, options) {
   function renderKanbanBoard(detail) {
     const renderToken = ++kanbanRenderToken;
     kanbanNextLaneIndex = 0;
+    const scrollState = captureKanbanScrollState();
     elements.laneBoard.className = "lane-board";
     elements.laneBoard.innerHTML = "";
     const laneQueues = [];
@@ -34,17 +36,23 @@ export function createKanbanBoardModule(ctx, options) {
         deleteLane,
         renameLane,
       });
-
-      elements.laneBoard.append(laneElement);
-      laneQueues.push({
+      const restoreScrollTop = scrollState.laneScrollTopById.get(lane.id) ?? 0;
+      const queue = {
+        laneId: lane.id,
         list,
+        restoreScrollPending: restoreScrollTop > 0,
+        restoreScrollTop,
         tickets: visibleTickets,
         index: 0,
         afterRender: hiddenInactiveTickets.length > 0
           ? () => list.append(createInactiveTicketsSummary(ctx, hiddenInactiveTickets, inactiveTotal))
           : null,
         afterRenderDone: false,
-      });
+      };
+      trackLaneScroll(list, queue);
+
+      elements.laneBoard.append(laneElement);
+      laneQueues.push(queue);
     }
 
     const addLaneButton = document.createElement("button");
@@ -60,7 +68,39 @@ export function createKanbanBoardModule(ctx, options) {
       elements.laneBoard.append(addLaneButton);
     }
 
+    restoreKanbanBoardScrollState(scrollState);
     renderKanbanTicketsInBatches(renderToken, laneQueues);
+  }
+
+  function captureKanbanScrollState() {
+    for (const list of elements.laneBoard.querySelectorAll(".ticket-list[data-lane-id]")) {
+      const laneId = Number(list.dataset.laneId);
+      if (list.scrollHeight > list.clientHeight || list.scrollTop > 0) {
+        laneScrollTopById.set(laneId, list.scrollTop);
+      }
+    }
+    return {
+      boardScrollLeft: elements.laneBoard.scrollLeft,
+      boardScrollTop: elements.laneBoard.scrollTop,
+      laneScrollTopById: new Map(laneScrollTopById),
+    };
+  }
+
+  function restoreKanbanBoardScrollState(scrollState) {
+    elements.laneBoard.scrollLeft = scrollState.boardScrollLeft;
+    elements.laneBoard.scrollTop = scrollState.boardScrollTop;
+  }
+
+  function trackLaneScroll(list, queue) {
+    list.addEventListener("scroll", () => {
+      laneScrollTopById.set(queue.laneId, list.scrollTop);
+    });
+    const stop = () => {
+      queue.restoreScrollPending = false;
+    };
+    list.addEventListener("wheel", stop, { passive: true });
+    list.addEventListener("touchmove", stop, { passive: true });
+    list.addEventListener("pointerdown", stop);
   }
 
   function getKanbanLaneTicketGroups(laneTickets) {
@@ -157,6 +197,7 @@ export function createKanbanBoardModule(ctx, options) {
           queue.afterRender?.();
           queue.afterRenderDone = true;
         }
+        restoreLaneScroll(queue);
       }
       if (laneQueues.some((queue) => queue.index < queue.tickets.length)) {
         requestAnimationFrame(step);
@@ -164,6 +205,21 @@ export function createKanbanBoardModule(ctx, options) {
     }
 
     requestAnimationFrame(step);
+  }
+
+  function restoreLaneScroll(queue) {
+    if (!queue.restoreScrollPending) {
+      return;
+    }
+    const maxScrollTop = Math.max(0, queue.list.scrollHeight - queue.list.clientHeight);
+    if (maxScrollTop <= 0 && queue.index < queue.tickets.length) {
+      return;
+    }
+    queue.list.scrollTop = Math.min(queue.restoreScrollTop, maxScrollTop);
+    laneScrollTopById.set(queue.laneId, queue.list.scrollTop);
+    if (maxScrollTop >= queue.restoreScrollTop || queue.index >= queue.tickets.length) {
+      queue.restoreScrollPending = false;
+    }
   }
 
   function bindDropZone(list) {

@@ -14,9 +14,9 @@ test("board content keeps active headers visible during vertical scroll", async 
   try {
     const boardPayload = await createBoard(page.request, baseUrl, {
       name: "Sticky Scroll Board",
-      laneNames: ["todo", "review"],
+      laneNames: ["todo", "review", "doing"],
     });
-    const [todoLane, reviewLane] = boardPayload.lanes;
+    const [todoLane, reviewLane, doingLane] = boardPayload.lanes;
     let lastTicketId = 0;
     for (let index = 1; index <= 48; index += 1) {
       const ticket = await createTicket(page.request, baseUrl, boardPayload.board.id, {
@@ -26,9 +26,16 @@ test("board content keeps active headers visible during vertical scroll", async 
       });
       lastTicketId = ticket.id;
     }
+    for (let index = 1; index <= 32; index += 1) {
+      await createTicket(page.request, baseUrl, boardPayload.board.id, {
+        laneId: doingLane.id,
+        title: `Unchanged doing ticket ${String(index).padStart(2, "0")}`,
+        priority: 2,
+      });
+    }
 
     await page.goto(`${baseUrl}/boards/${boardPayload.board.id}`);
-    await expect(page.locator(".ticket-card")).toHaveCount(48);
+    await expect(page.locator(".ticket-card")).toHaveCount(80);
     await expect(page.locator(`.ticket-list[data-lane-id="${todoLane.id}"] .ticket-card`)).toHaveCount(48);
     const kanbanBefore = await page.evaluate((laneId) => {
       const board = document.querySelector("#lane-board");
@@ -54,6 +61,10 @@ test("board content keeps active headers visible during vertical scroll", async 
     }, todoLane.id);
     expect(kanbanBefore.listScrollHeight).toBeGreaterThan(kanbanBefore.listClientHeight);
     await page.locator(`.ticket-list[data-lane-id="${todoLane.id}"]`).evaluate((list) => {
+      list.scrollTop = list.scrollHeight;
+      list.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await page.locator(`.ticket-list[data-lane-id="${doingLane.id}"]`).evaluate((list) => {
       list.scrollTop = list.scrollHeight;
       list.dispatchEvent(new Event("scroll", { bubbles: true }));
     });
@@ -103,6 +114,11 @@ test("board content keeps active headers visible during vertical scroll", async 
         response.request().method() === "PATCH" &&
         response.status() === 200,
       ),
+      page.waitForResponse((response) =>
+        response.url().endsWith(`/api/boards/${boardPayload.board.id}`) &&
+        response.request().method() === "GET" &&
+        response.status() === 200,
+      ),
       page.evaluate(({ targetLaneId, ticketId }) => {
         const card = document.querySelector(`.ticket-card[data-ticket-id="${ticketId}"]`);
         const targetList = document.querySelector(`.ticket-list[data-lane-id="${targetLaneId}"]`);
@@ -135,7 +151,16 @@ test("board content keeps active headers visible during vertical scroll", async 
         }));
       }, { targetLaneId: reviewLane.id, ticketId: lastTicketId }),
     ]);
+    await expect(page.locator(`.lane[data-lane-id="${todoLane.id}"] .lane-count`)).toHaveText("47");
+    await expect(page.locator(`.lane[data-lane-id="${reviewLane.id}"] .lane-count`)).toHaveText("1");
+    await expect(page.locator(`.lane[data-lane-id="${doingLane.id}"] .lane-count`)).toHaveText("32");
     await expect(page.locator(".lane", { has: page.locator(`.ticket-card[data-ticket-id="${lastTicketId}"]`) }).locator(".lane-title")).toHaveText("review");
+    await expect
+      .poll(async () => page.locator(`.ticket-list[data-lane-id="${todoLane.id}"]`).evaluate((list) => list.scrollTop))
+      .toBeGreaterThan(0);
+    await expect
+      .poll(async () => page.locator(`.ticket-list[data-lane-id="${doingLane.id}"]`).evaluate((list) => list.scrollTop))
+      .toBeGreaterThan(0);
 
     await page.getByRole("button", { name: "List" }).click();
     await expect(page.locator("#list-board")).toBeVisible();

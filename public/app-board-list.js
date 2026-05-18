@@ -2,21 +2,79 @@ import { calculateVisibleWindow } from "./app-board-utils.js";
 import { renderListActions } from "./app-board-list-actions.js";
 import { renderListRow } from "./app-board-list-row.js";
 import { createListSelectionModule } from "./app-board-list-selection.js";
+import { icon } from "./icons.js";
 
 export { renderListActions } from "./app-board-list-actions.js";
 
 export const LIST_ROW_HEIGHT = 64;
 export const LIST_OVERSCAN = 12;
+export const LIST_SORT_KEYS = new Set(["id", "tags", "priority"]);
 
 function comparePriorityDescending(a, b) {
   return b.priority - a.priority || a.id - b.id;
 }
 
-export function getListTickets(tickets) {
+function compareIdAscending(a, b) {
+  return a.id - b.id;
+}
+
+function getTagSortValue(ticket) {
+  return [...(ticket.tags ?? [])]
+    .map((tag) => String(tag.name ?? "").trim().toLocaleLowerCase())
+    .sort()
+    .join("\u0000");
+}
+
+function compareTags(a, b, direction = "asc") {
+  const left = getTagSortValue(a);
+  const right = getTagSortValue(b);
+  if (left !== right) {
+    if (!left) {
+      return 1;
+    }
+    if (!right) {
+      return -1;
+    }
+    const result = left.localeCompare(right);
+    return direction === "desc" ? -result : result;
+  }
+  return compareIdAscending(a, b);
+}
+
+function comparePriority(a, b, direction = "asc") {
+  const priorityDifference = a.priority - b.priority;
+  if (priorityDifference !== 0) {
+    return direction === "desc" ? -priorityDifference : priorityDifference;
+  }
+  return compareIdAscending(a, b);
+}
+
+export function getListTicketComparator(sort = null) {
+  if (!sort || !LIST_SORT_KEYS.has(sort.key)) {
+    return comparePriorityDescending;
+  }
+  if (sort.key === "tags") {
+    return (a, b) => compareTags(a, b, sort.direction);
+  }
+  if (sort.key === "priority") {
+    return (a, b) => comparePriority(a, b, sort.direction);
+  }
+  return sort.direction === "desc"
+    ? (a, b) => b.id - a.id
+    : compareIdAscending;
+}
+
+export function getListTickets(tickets, sort = null) {
+  const compareTickets = getListTicketComparator(sort);
+  if (sort && LIST_SORT_KEYS.has(sort.key)) {
+    return [...tickets]
+      .sort(compareTickets)
+      .map((ticket) => ({ ticket, indent: 0 }));
+  }
   const byId = new Map(tickets.map((ticket) => [ticket.id, ticket]));
   const roots = tickets
     .filter((ticket) => ticket.parentTicketId == null || !byId.has(ticket.parentTicketId))
-    .sort(comparePriorityDescending);
+    .sort(compareTickets);
   const ordered = [];
   const seen = new Set();
   for (const root of roots) {
@@ -24,13 +82,13 @@ export function getListTickets(tickets) {
     seen.add(root.id);
     const children = tickets
       .filter((candidate) => candidate.parentTicketId === root.id)
-      .sort(comparePriorityDescending);
+      .sort(compareTickets);
     for (const child of children) {
       ordered.push({ ticket: child, indent: 1 });
       seen.add(child.id);
     }
   }
-  for (const ticket of tickets.sort(comparePriorityDescending)) {
+  for (const ticket of [...tickets].sort(compareTickets)) {
     if (!seen.has(ticket.id)) {
       ordered.push({ ticket, indent: ticket.parentTicketId == null ? 0 : 1 });
     }
@@ -43,6 +101,7 @@ export function createListBoardModule(ctx, options) {
   const { hasUserTicketFilters, renderEmptyState, renderTicketStatusIcons } = options;
   const listSelection = createListSelectionModule(ctx);
   let listModel = null;
+  let listSort = null;
 
   function reset() {
     listModel = null;
@@ -72,7 +131,7 @@ export function createListBoardModule(ctx, options) {
       return;
     }
     elements.listBoard.className = "list-board";
-    const orderedTickets = getListTickets(detail.tickets);
+    const orderedTickets = getListTickets(detail.tickets, listSort);
     const visibleTicketIds = orderedTickets.map(({ ticket }) => ticket.id);
     const allSelected = visibleTicketIds.length > 0 && visibleTicketIds.every((ticketId) => state.selectedListTicketIds.includes(ticketId));
     const previousScrollTop = elements.listBoard.querySelector(".list-viewport")?.scrollTop ?? 0;
@@ -85,10 +144,10 @@ export function createListBoardModule(ctx, options) {
       ${actions}
       <div class="list-header">
         <div><input type="checkbox" id="list-select-all" ${allSelected ? "checked" : ""} /></div>
-        <div>ID / Title</div>
+        ${renderSortableListHeader("id", "ID / Title")}
         <div>Blockers</div>
-        <div>Tags</div>
-        <div>Priority</div>
+        ${renderSortableListHeader("tags", "Tags")}
+        ${renderSortableListHeader("priority", "Priority")}
         <div>Lane</div>
         <div>Status</div>
       </div>
@@ -110,6 +169,27 @@ export function createListBoardModule(ctx, options) {
       selectAll.indeterminate = selectedCount > 0 && selectedCount < visibleTicketIds.length;
     }
     paintVisibleListRows();
+  }
+
+  function renderSortableListHeader(key, label) {
+    const isActive = listSort?.key === key;
+    const nextDirection = !isActive ? "asc" : listSort.direction === "asc" ? "desc" : "none";
+    const iconName = !isActive ? "arrow-up-down" : listSort.direction === "asc" ? "arrow-up" : "arrow-down";
+    const sortLabel = isActive
+      ? `${label}, sorted ${listSort.direction === "asc" ? "ascending" : "descending"}`
+      : `${label}, not sorted`;
+    return `
+      <button
+        type="button"
+        class="list-sort-button ${isActive ? "active" : ""}"
+        data-list-sort-key="${key}"
+        data-list-sort-direction="${nextDirection}"
+        aria-label="${sortLabel}"
+      >
+        <span>${label}</span>
+        <span class="list-sort-indicator" aria-hidden="true">${icon(iconName)}</span>
+      </button>
+    `;
   }
 
   function paintVisibleListRows() {
@@ -135,6 +215,7 @@ export function createListBoardModule(ctx, options) {
       escapeHtml: ctx.escapeHtml,
       lanes: state.boardDetail.lanes,
       renderTicketStatusIcons,
+      showHierarchy: !listSort,
       rowHeight: LIST_ROW_HEIGHT,
       selectedTicketIds: state.selectedListTicketIds,
     })).join("");
@@ -156,6 +237,11 @@ export function createListBoardModule(ctx, options) {
       ctx.openEditor(Number(openButton.dataset.openTicketId), "view");
       return;
     }
+    const sortButton = event.target.closest("[data-list-sort-key]");
+    if (sortButton && elements.listBoard.contains(sortButton)) {
+      updateListSort(sortButton.dataset.listSortKey, sortButton.dataset.listSortDirection);
+      return;
+    }
     const bulkButton = event.target.closest(".list-action-button");
     if (bulkButton && elements.listBoard.contains(bulkButton) && !bulkButton.disabled) {
       if (bulkButton.dataset.bulkDelete) {
@@ -172,6 +258,19 @@ export function createListBoardModule(ctx, options) {
       }
       listSelection.updateSelectedListTickets(bulkButton.dataset.bulkResolve === "true");
     }
+  }
+
+  function updateListSort(key, direction) {
+    if (!LIST_SORT_KEYS.has(key)) {
+      return;
+    }
+    if (direction === "none") {
+      listSort = null;
+      ctx.renderBoardDetail();
+      return;
+    }
+    listSort = { key, direction: direction === "desc" ? "desc" : "asc" };
+    ctx.renderBoardDetail();
   }
 
   function handleListBoardChange(event) {

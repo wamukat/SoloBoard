@@ -17,6 +17,13 @@ type ListTag = {
   color?: string | null;
 };
 
+type ListSortKey = "id" | "tags" | "priority";
+
+type ListSort = {
+  key: ListSortKey;
+  direction: "asc" | "desc";
+};
+
 type ListBoardTicket = ListTicket & ListActionTicket & {
   title: string;
   laneId: number;
@@ -77,7 +84,9 @@ type ListBoardOptions = {
 export const LIST_ROW_HEIGHT: number;
 export const LIST_OVERSCAN: number;
 
-export function getListTickets<T extends ListTicket>(tickets: T[]): Array<{
+export function getListTicketComparator<T extends ListTicket & { tags?: ListTag[] }>(sort?: ListSort | null): (left: T, right: T) => number;
+
+export function getListTickets<T extends ListTicket & { tags?: ListTag[] }>(tickets: T[], sort?: ListSort | null): Array<{
   ticket: T;
   indent: number;
 }>;
